@@ -12,8 +12,9 @@ Open `index.html` in any modern browser (double-click it, or serve the folder wi
 
 Open the GitHub Pages link, then add it to your home screen (iPhone Safari: **Share → Add to
 Home Screen**; Android Chrome: **⋮ → Add to Home screen**). It opens full-screen with its own
-icon and works offline once it has loaded. Updates download in the background and apply the
-next time you open it.
+icon and works offline once it has loaded. When a new version is out, it downloads in the
+background and an **Update ready** button appears at the top; tap it to switch (a game in
+progress picks up where you left off).
 
 ### Sharing
 
@@ -99,7 +100,7 @@ Profiles are stored in the browser (`localStorage`), so they stay on that device
 | `profiles.js` | Profile storage, game history and stats |
 | `match.js` | Match rules: points vs. wins, early finish, standings |
 | `game.js` | Setup, turn flow, dice, scorecard and profile screens |
-| `sw.js` | Service worker: offline copy of the app (bump `VERSION` when adding files) |
+| `sw.js` | Service worker: offline copy and updates. **Bump `VERSION` on every release** |
 | `manifest.webmanifest`, `icons/` | Home-screen name and icons (`icons/icon.svg` is the source) |
 | `tests/` | Unit tests for scoring, profile stats and match rules |
 

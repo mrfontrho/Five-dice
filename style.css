@@ -59,6 +59,17 @@ h2:first-child { margin-top: 0; }
 .tabs { display: flex; gap: 2px; }
 .tab { background: none; color: var(--muted); padding: 6px 10px; border-radius: 8px; font-weight: 500; }
 .tab.active { color: var(--text); background: var(--soft); }
+/* "Update ready" pill takes the title's place in the header when a new version is downloaded. */
+.update-btn {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  background: var(--accent); color: var(--accent-text); font-weight: 600; font-size: 0.82rem;
+  padding: 6px 11px; border-radius: 999px; animation: pop-in 0.3s ease-out;
+}
+.update-btn.hidden { display: none; }
+.top.has-update h1 { display: none; }
+.top.has-update { justify-content: space-between; }
+@keyframes pop-in { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .update-btn { animation: none; } }
 .share-btn { display: grid; place-items: center; padding: 6px 8px; margin-left: 2px; }
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;

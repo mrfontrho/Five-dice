@@ -1016,8 +1016,54 @@
 
   showView("play");
 
-  // Offline support: only over http(s) (not when opened as a local file).
-  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  // ---------- offline + updates ----------
+  // Only over http(s) (not when opened as a local file).
+  const RESUME_FLAG = "five-dice-resume-after-update";
+  let waitingWorker = null;
+  let updating = false;
+
+  function showUpdateButton(worker) {
+    waitingWorker = worker;
+    $("updateBtn").classList.remove("hidden");
+    document.querySelector(".top").classList.add("has-update");
   }
+
+  function applyUpdate() {
+    if (!waitingWorker) return;
+    updating = true;
+    $("updateBtn").disabled = true;
+    $("updateBtn").textContent = "Updating…";
+    // The game in progress is already saved; come straight back to it after the reload.
+    if (state && !state.over) { try { sessionStorage.setItem(RESUME_FLAG, "1"); } catch { /* ignore */ } }
+    waitingWorker.postMessage({ type: "SKIP_WAITING" });
+  }
+
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    // Reload only when the player asked for the update (not on the very first install).
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (updating) location.reload(); });
+    window.addEventListener("load", async () => {
+      let reg;
+      try { reg = await navigator.serviceWorker.register("sw.js"); } catch { return; }
+      const isUpdate = () => !!navigator.serviceWorker.controller; // a version is already running
+      if (reg.waiting && isUpdate()) showUpdateButton(reg.waiting);
+      reg.addEventListener("updatefound", () => {
+        const w = reg.installing;
+        if (!w) return;
+        w.addEventListener("statechange", () => { if (w.state === "installed" && isUpdate()) showUpdateButton(w); });
+      });
+      // Look for a new version whenever the app comes back to the foreground or regains signal.
+      const check = () => { if (navigator.onLine) reg.update().catch(() => {}); };
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+      window.addEventListener("online", check);
+    });
+  }
+  $("updateBtn").addEventListener("click", applyUpdate);
+
+  // After tapping "Update ready" mid-game, pick the game back up automatically.
+  try {
+    if (sessionStorage.getItem(RESUME_FLAG)) {
+      sessionStorage.removeItem(RESUME_FLAG);
+      if (store.get(SAVE_KEY)) resumeGame();
+    }
+  } catch { /* ignore */ }
 })();
