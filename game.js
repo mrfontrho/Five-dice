@@ -1,98 +1,218 @@
 (function () {
   const S = window.Scoring;
+  const P = window.Profiles;
   const MAX_PLAYERS = 4;
   const ROLLS_PER_TURN = 3;
-  const BEST_KEY = "five-dice-best";
+  const SAVE_KEY = "five-dice-current";
+  const LINEUP_KEY = "five-dice-last-lineup";
+  const NEW = "__new__";
+  const GUEST = "__guest__";
 
   // Pip positions on a 3x3 grid (0..8) for faces 1..6.
   const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 
   const $ = (id) => document.getElementById(id);
-  const state = { players: [], current: 0, dice: [1, 1, 1, 1, 1], held: [false, false, false, false, false], rollsUsed: 0, round: 1, over: false, lastPlaced: null };
+  const el = (tag, props = {}, ...kids) => {
+    const n = Object.assign(document.createElement(tag), props);
+    for (const k of kids) if (k != null) n.append(k);
+    return n;
+  };
 
-  // ---------- best score (per-browser convenience) ----------
-  function getBest() { try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; } }
-  function setBest(v) { try { localStorage.setItem(BEST_KEY, String(v)); } catch { /* ignore */ } }
-  function renderBest() { const b = getBest(); $("best").textContent = b ? `Best: ${b}` : ""; }
+  let data = P.load();
+  let state = null;
+
+  // ---------- small storage helpers (all failures are non-fatal) ----------
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
+    del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+  };
+
+  // ---------- views ----------
+  function showView(name) {
+    const playing = state && !state.over;
+    $("setup").classList.toggle("hidden", name !== "play" || playing);
+    $("game").classList.toggle("hidden", name !== "play" || !playing);
+    $("profilesView").classList.toggle("hidden", name !== "profiles");
+    $("tabPlay").classList.toggle("active", name === "play");
+    $("tabProfiles").classList.toggle("active", name === "profiles");
+    $("tabPlay").setAttribute("aria-pressed", String(name === "play"));
+    $("tabProfiles").setAttribute("aria-pressed", String(name === "profiles"));
+    if (name === "profiles") renderProfiles();
+    if (name === "play" && !playing) renderSetup();
+  }
 
   // ---------- setup ----------
-  function addPlayerInput(name = "") {
-    const box = $("playerInputs");
-    if (box.children.length >= MAX_PLAYERS) return;
-    const row = document.createElement("div");
-    row.className = "player-row";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.maxLength = 16;
-    input.placeholder = `Player ${box.children.length + 1}`;
-    input.value = name;
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") startGame(); });
-    row.appendChild(input);
-    if (box.children.length > 0) {
-      const rm = document.createElement("button");
-      rm.type = "button"; rm.className = "ghost"; rm.textContent = "✕"; rm.setAttribute("aria-label", "Remove player");
-      rm.addEventListener("click", () => { row.remove(); refreshPlaceholders(); });
-      row.appendChild(rm);
-    }
-    box.appendChild(row);
-    refreshPlaceholders();
+  function playerRow(choice) {
+    const select = el("select", { className: "player-select", ariaLabel: "Player" });
+    const nameInput = el("input", { type: "text", maxLength: 16, className: "player-name" });
+    nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") startGame(); });
+
+    for (const p of P.list(data)) select.append(el("option", { value: p.id, textContent: p.name }));
+    select.append(el("option", { value: NEW, textContent: "+ New profile…" }));
+    select.append(el("option", { value: GUEST, textContent: "Guest (stats not saved)" }));
+
+    const sync = () => {
+      const v = select.value;
+      nameInput.classList.toggle("hidden", v !== NEW && v !== GUEST);
+      nameInput.placeholder = v === NEW ? "Profile name" : "Guest name (optional)";
+    };
+    select.addEventListener("change", () => { sync(); if (!nameInput.classList.contains("hidden")) nameInput.focus(); });
+
+    const row = el("div", { className: "player-row" }, select, nameInput);
+    const rm = el("button", { type: "button", className: "ghost icon", textContent: "✕", ariaLabel: "Remove player" });
+    rm.addEventListener("click", () => { row.remove(); refreshRows(); });
+    row.append(rm);
+
+    const valid = choice && (choice === GUEST || choice === NEW || data.profiles[choice]);
+    select.value = valid ? choice : (P.list(data).length ? P.list(data)[0].id : NEW);
+    sync();
+    return row;
   }
-  function refreshPlaceholders() {
-    [...$("playerInputs").querySelectorAll("input")].forEach((inp, i) => (inp.placeholder = `Player ${i + 1}`));
-    $("addPlayer").disabled = $("playerInputs").children.length >= MAX_PLAYERS;
+
+  function refreshRows() {
+    const rows = $("playerRows").children;
+    for (const r of rows) r.querySelector(".icon").classList.toggle("invisible", rows.length === 1);
+    $("addPlayer").disabled = rows.length >= MAX_PLAYERS;
+  }
+
+  function renderSetup() {
+    const box = $("playerRows");
+    box.innerHTML = "";
+    const lineup = (store.get(LINEUP_KEY) || []).filter((id) => data.profiles[id]);
+    (lineup.length ? lineup : [null]).forEach((id) => box.append(playerRow(id)));
+    refreshRows();
+    $("setupError").textContent = "";
+
+    const saved = store.get(SAVE_KEY);
+    $("resumeBox").classList.toggle("hidden", !saved);
+    if (saved) $("resumeText").textContent =
+      `Game in progress: turn ${saved.round} of 13 · ${saved.players.map((p) => p.name).join(", ")}`;
+  }
+
+  function addPlayerRow() {
+    if ($("playerRows").children.length >= MAX_PLAYERS) return;
+    // Suggest the first saved profile not already picked.
+    const picked = [...$("playerRows").querySelectorAll("select")].map((s) => s.value);
+    const next = P.list(data).find((p) => !picked.includes(p.id));
+    const row = playerRow(next ? next.id : NEW);
+    $("playerRows").append(row);
+    refreshRows();
+    row.querySelector("select").focus();
   }
 
   function startGame() {
-    const names = [...$("playerInputs").querySelectorAll("input")].map((inp, i) => inp.value.trim() || `Player ${i + 1}`);
-    state.players = names.map((name) => ({ name, card: {}, fiveKindBonus: 0 }));
-    state.current = 0;
-    state.round = 1;
-    state.over = false;
-    state.lastPlaced = null;
+    const err = (msg) => { $("setupError").textContent = msg; };
+    const rows = [...$("playerRows").children];
+    const chosen = [];
+    const newNames = [];
+    for (const [i, r] of rows.entries()) {
+      const v = r.querySelector("select").value;
+      const name = r.querySelector(".player-name").value.trim();
+      if (v === NEW) {
+        if (!name) return err(`Enter a name for player ${i + 1}'s new profile.`);
+        if (P.nameTaken(data, name) || newNames.includes(name.toLowerCase()))
+          return err(`"${name}" is already a profile. Pick it from the list instead.`);
+        newNames.push(name.toLowerCase());
+        chosen.push({ kind: "new", name });
+      } else if (v === GUEST) {
+        chosen.push({ kind: "guest", name: name || `Guest ${i + 1}` });
+      } else {
+        if (chosen.some((c) => c.id === v)) return err(`${data.profiles[v].name} is listed twice.`);
+        chosen.push({ kind: "profile", id: v, name: data.profiles[v].name });
+      }
+    }
+    for (const c of chosen) if (c.kind === "new") { c.id = P.createProfile(data, c.name).id; c.kind = "profile"; }
+    if (newNames.length) P.save(data);
+    store.set(LINEUP_KEY, chosen.filter((c) => c.kind === "profile").map((c) => c.id));
+
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    state = {
+      mode,
+      players: chosen.map((c) => ({ name: c.name, profileId: c.kind === "profile" ? c.id : null, card: {}, fiveKindBonus: 0 })),
+      current: 0, round: 1, over: false, lastPlaced: null, undo: null,
+      dice: [], held: [], rollsUsed: 0,
+    };
     resetTurn();
-    $("setup").classList.add("hidden");
-    $("game").classList.remove("hidden");
-    buildCard();
-    render();
-    $("rollBtn").focus();
+    enterGame();
   }
 
-  function showSetup() {
-    $("game").classList.add("hidden");
-    $("setup").classList.remove("hidden");
-    if (!$("playerInputs").children.length) addPlayerInput();
+  function enterGame() {
+    buildCard();
+    $("virtualControls").classList.toggle("hidden", state.mode !== "virtual");
+    $("manualControls").classList.toggle("hidden", state.mode !== "manual");
+    showView("play");
+    render();
+    (state.mode === "virtual" ? $("rollBtn") : $("facePad").firstChild).focus();
+  }
+
+  function resumeGame() {
+    const saved = store.get(SAVE_KEY);
+    if (!saved) return renderSetup();
+    state = saved;
+    // A profile deleted meanwhile becomes a guest.
+    for (const p of state.players) if (p.profileId && !data.profiles[p.profileId]) p.profileId = null;
+    enterGame();
   }
 
   // ---------- turn flow ----------
   function resetTurn() {
     state.rollsUsed = 0;
     state.held = [false, false, false, false, false];
+    state.dice = state.mode === "manual" ? [null, null, null, null, null] : [1, 1, 1, 1, 1];
   }
 
+  const ready = () => state.mode === "manual" ? state.dice.every(Boolean) : state.rollsUsed > 0;
+
   function roll() {
-    if (state.over || state.rollsUsed >= ROLLS_PER_TURN) return;
-    const els = $("dice").children;
+    if (!state || state.over || state.mode !== "virtual" || state.rollsUsed >= ROLLS_PER_TURN) return;
     state.dice = state.dice.map((d, i) => (state.held[i] && state.rollsUsed > 0 ? d : 1 + Math.floor(Math.random() * 6)));
     state.rollsUsed++;
     render();
+    const els = $("dice").children;
     for (let i = 0; i < els.length; i++) {
       if (state.held[i]) continue;
       els[i].classList.remove("rolling");
-      void els[i].offsetWidth; // restart animation
+      void els[i].offsetWidth; // restart the animation
       els[i].classList.add("rolling");
     }
   }
 
-  function toggleHold(i) {
-    if (state.over || state.rollsUsed === 0 || state.rollsUsed >= ROLLS_PER_TURN) return;
-    state.held[i] = !state.held[i];
-    renderDice();
+  function tapDie(i) {
+    if (!state || state.over) return;
+    if (state.mode === "manual") {
+      state.dice[i] = state.dice[i] ? (state.dice[i] % 6) + 1 : 1; // cycle 1..6
+    } else {
+      if (state.rollsUsed === 0 || state.rollsUsed >= ROLLS_PER_TURN) return;
+      state.held[i] = !state.held[i];
+    }
+    render();
+  }
+
+  function enterFace(v) {
+    if (!state || state.over || state.mode !== "manual") return;
+    const i = state.dice.indexOf(null);
+    if (i === -1) return;
+    state.dice[i] = v;
+    render();
+  }
+
+  function removeLastFace() {
+    if (!state || state.mode !== "manual") return;
+    for (let i = 4; i >= 0; i--) if (state.dice[i]) { state.dice[i] = null; break; }
+    render();
+  }
+
+  function snapshot() {
+    const { undo, ...rest } = state;
+    return JSON.parse(JSON.stringify(rest));
   }
 
   function place(category) {
+    if (!state || state.over || !ready()) return;
     const p = state.players[state.current];
-    if (state.over || state.rollsUsed === 0) return;
     if (!S.allowedCategories(state.dice, p.card).includes(category)) return;
+    const before = snapshot();
     p.fiveKindBonus += S.bonusFor(state.dice, p.card);
     p.card[category] = S.scoreFor(category, state.dice, p.card);
     state.lastPlaced = { player: state.current, category };
@@ -105,91 +225,121 @@
       state.current++;
     }
     resetTurn();
+    state.undo = before;
     render();
+  }
+
+  function undo() {
+    if (!state || !state.undo) return;
+    state = { ...state.undo, undo: null };
+    render();
+  }
+
+  function quit() {
+    if (!confirm("End this game without saving it to anyone's stats?")) return;
+    store.del(SAVE_KEY);
+    state = null;
+    showView("play");
   }
 
   function finish() {
     state.over = true;
-    render();
-    const ranked = state.players
-      .map((p) => ({ name: p.name, total: S.totals(p.card, p.fiveKindBonus).grand }))
-      .sort((a, b) => b.total - a.total);
-    const top = ranked[0].total;
-    const winners = ranked.filter((r) => r.total === top);
-    const isRecord = top > getBest();
-    if (isRecord) setBest(top);
-    renderBest();
+    state.undo = null;
+    store.del(SAVE_KEY);
+    renderCard();
 
-    $("endTitle").textContent = state.players.length === 1
-      ? `Final score: ${top}${isRecord ? " — new best!" : ""}`
-      : (winners.length > 1 ? `Tie at ${top}!` : `${winners[0].name} wins with ${top}!`) + (isRecord ? " New best!" : "");
-    $("endList").innerHTML = "";
-    for (const r of ranked) {
-      const li = document.createElement("li");
-      li.textContent = `${r.name}: ${r.total}`;
-      $("endList").appendChild(li);
+    const results = state.players.map((p) => ({ p, total: S.totals(p.card, p.fiveKindBonus).grand }));
+    const top = Math.max(...results.map((r) => r.total));
+    const multi = state.players.length > 1;
+    for (const r of results) {
+      r.won = multi && r.total === top;
+      if (r.p.profileId) {
+        const rec = P.recordGame(data, r.p.profileId, {
+          card: r.p.card, fiveKindBonus: r.p.fiveKindBonus, opponents: state.players.length - 1, won: r.won,
+        });
+        r.personalBest = rec && rec.personalBest;
+      }
     }
+    if (results.some((r) => r.p.profileId)) P.save(data);
+
+    const winners = results.filter((r) => r.total === top);
+    $("endTitle").textContent = !multi ? `Final score: ${top}`
+      : winners.length > 1 ? `Tie at ${top}!` : `${winners[0].p.name} wins with ${top}!`;
+    const list = $("endList");
+    list.innerHTML = "";
+    for (const r of [...results].sort((a, b) => b.total - a.total)) {
+      const li = el("li", {}, el("span", { textContent: r.p.name }), el("b", { textContent: r.total }));
+      if (r.personalBest) li.append(el("span", { className: "badge", textContent: "New personal best" }));
+      if (!r.p.profileId) li.append(el("span", { className: "muted small-text", textContent: "guest" }));
+      list.append(li);
+    }
+    $("viewStats").classList.toggle("hidden", !results.some((r) => r.p.profileId));
     $("endDialog").showModal();
   }
 
-  // ---------- rendering ----------
+  // ---------- game rendering ----------
   function buildDice() {
     const box = $("dice");
-    box.innerHTML = "";
     for (let i = 0; i < 5; i++) {
-      const d = document.createElement("button");
-      d.type = "button";
-      d.className = "die";
-      for (let p = 0; p < 9; p++) { const pip = document.createElement("span"); pip.className = "pip"; d.appendChild(pip); }
-      d.addEventListener("click", () => toggleHold(i));
-      box.appendChild(d);
+      const d = el("button", { type: "button", className: "die" });
+      for (let p = 0; p < 9; p++) d.append(el("span", { className: "pip" }));
+      d.addEventListener("click", () => tapDie(i));
+      box.append(d);
+    }
+    const pad = $("facePad");
+    for (let v = 1; v <= 6; v++) {
+      const b = el("button", { type: "button", className: "face-btn", ariaLabel: `Enter ${v}` });
+      for (let p = 0; p < 9; p++) b.append(el("span", { className: "pip" + (PIPS[v].includes(p) ? " on" : "") }));
+      b.addEventListener("click", () => enterFace(v));
+      pad.append(b);
     }
   }
 
   function renderDice() {
     const els = $("dice").children;
-    const canHold = state.rollsUsed > 0 && state.rollsUsed < ROLLS_PER_TURN && !state.over;
+    const manual = state.mode === "manual";
+    const canHold = !manual && state.rollsUsed > 0 && state.rollsUsed < ROLLS_PER_TURN && !state.over;
     for (let i = 0; i < 5; i++) {
-      const el = els[i];
+      const d = els[i];
       const v = state.dice[i];
-      el.classList.toggle("held", state.held[i]);
-      el.classList.toggle("blank", state.rollsUsed === 0);
-      el.disabled = !canHold;
-      [...el.children].forEach((pip, idx) => pip.classList.toggle("on", PIPS[v].includes(idx)));
-      el.setAttribute("aria-label", state.rollsUsed === 0 ? `Die ${i + 1}, not rolled` : `Die ${i + 1}: ${v}${state.held[i] ? ", held" : ""}`);
-      el.setAttribute("aria-pressed", String(state.held[i]));
+      const blank = manual ? !v : state.rollsUsed === 0;
+      d.classList.toggle("held", !manual && state.held[i]);
+      d.classList.toggle("blank", blank);
+      d.classList.toggle("editable", manual);
+      d.disabled = manual ? state.over : !canHold;
+      [...d.children].forEach((pip, idx) => pip.classList.toggle("on", !!v && !blank && PIPS[v].includes(idx)));
+      if (manual) d.setAttribute("aria-label", v ? `Die ${i + 1}: ${v}. Tap to change.` : `Die ${i + 1}: empty. Tap to set.`);
+      else d.setAttribute("aria-label", blank ? `Die ${i + 1}, not rolled` : `Die ${i + 1}: ${v}${state.held[i] ? ", held" : ""}`);
+      if (manual) d.removeAttribute("aria-pressed"); else d.setAttribute("aria-pressed", String(state.held[i]));
     }
+    for (const b of $("facePad").children) b.disabled = state.over || state.dice.every(Boolean);
+    $("clearDice").disabled = !state.dice.some(Boolean);
   }
 
   function buildCard() {
     const head = $("cardHead");
     head.innerHTML = "<th>Category</th>";
-    for (const p of state.players) {
-      const th = document.createElement("th");
-      th.textContent = p.name;
-      head.appendChild(th);
-    }
+    for (const p of state.players) head.append(el("th", { textContent: p.name }));
+
     const body = $("cardBody");
     body.innerHTML = "";
     const row = (label, key, cls, hint) => {
-      const tr = document.createElement("tr");
-      if (cls) tr.className = cls;
-      const td = document.createElement("td");
-      td.textContent = label;
-      if (hint) { const h = document.createElement("span"); h.className = "hint"; h.textContent = hint; td.appendChild(h); }
-      tr.appendChild(td);
+      const first = el("td", { textContent: label });
+      if (hint) first.append(el("span", { className: "hint", textContent: hint }));
+      const tr = el("tr", { className: cls || "" }, first);
       state.players.forEach((_, pi) => {
-        const c = document.createElement("td");
-        c.className = "cell";
+        const c = el("td", { className: "cell" });
         c.dataset.key = key;
         c.dataset.player = pi;
         if (S.CATEGORIES.includes(key)) {
           c.addEventListener("click", () => { if (pi === state.current) place(key); });
-          c.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && pi === state.current) { e.preventDefault(); place(key); } });
+          c.addEventListener("keydown", (e) => {
+            if ((e.key === "Enter" || e.key === " ") && pi === state.current) { e.preventDefault(); place(key); }
+          });
         }
-        tr.appendChild(c);
+        tr.append(c);
       });
-      body.appendChild(tr);
+      body.append(tr);
     };
     row("Upper section", "", "section");
     S.UPPER.forEach((k) => row(S.LABELS[k], k, "", S.HINTS[k]));
@@ -198,7 +348,7 @@
     row("Lower section", "", "section");
     S.LOWER.forEach((k) => row(S.LABELS[k], k, "", S.HINTS[k]));
     row("Five of a Kind bonus", "fiveKindBonus", "total");
-    row("Grand total", "grand", "total");
+    row("Grand total", "grand", "total grand");
   }
 
   function renderCard() {
@@ -210,17 +360,18 @@
       if (!key) continue;
       const pi = Number(td.dataset.player);
       const p = state.players[pi];
-      td.classList.remove("pick", "zero", "just");
+      td.classList.remove("pick", "zero", "just", "turn");
       td.removeAttribute("tabindex");
       td.removeAttribute("role");
+      td.removeAttribute("aria-label");
+      td.classList.toggle("turn", pi === state.current && !state.over);
 
       if (S.CATEGORIES.includes(key)) {
-        const filled = p.card[key] !== undefined;
-        if (filled) {
+        if (p.card[key] !== undefined) {
           td.textContent = p.card[key];
-          if (state.lastPlaced && state.lastPlaced.player === pi && state.lastPlaced.category === key) td.classList.add("just");
-        } else if (pi === state.current && state.rollsUsed > 0 && !state.over
-                   && S.allowedCategories(state.dice, p.card).includes(key)) {
+          const lp = state.lastPlaced;
+          if (lp && lp.player === pi && lp.category === key) td.classList.add("just");
+        } else if (pi === state.current && !state.over && ready() && S.allowedCategories(state.dice, p.card).includes(key)) {
           const v = S.scoreFor(key, state.dice, p.card);
           td.textContent = v;
           td.classList.add("pick");
@@ -234,40 +385,216 @@
       } else {
         const t = S.totals(p.card, p.fiveKindBonus);
         const v = t[key];
-        td.textContent = key === "upperBonus" ? (v ? v : `${Math.max(0, S.UPPER_BONUS_THRESHOLD - t.upper)} to go`) : v;
-        if (key === "upperBonus" && !v && S.UPPER.every((k) => p.card[k] !== undefined)) td.textContent = 0;
+        if (key === "upperBonus" && !v) {
+          const done = S.UPPER.every((k) => p.card[k] !== undefined);
+          td.textContent = done ? 0 : `${Math.max(0, S.UPPER_BONUS_THRESHOLD - t.upper)} to go`;
+        } else {
+          td.textContent = v;
+        }
       }
     }
   }
 
   function render() {
+    if (!state) return;
     renderDice();
     renderCard();
     const p = state.players[state.current];
-    const left = ROLLS_PER_TURN - state.rollsUsed;
-    $("rollBtn").disabled = state.over || left === 0;
-    $("rollBtn").textContent = state.rollsUsed === 0 ? "Roll" : left === 0 ? "No rolls left" : `Roll again`;
-    $("rollsLeft").textContent = state.over ? "" : state.rollsUsed === 0
-      ? "Roll to start your turn"
-      : left === 0 ? "Pick a box to score" : `${left} roll${left === 1 ? "" : "s"} left · tap dice to hold`;
+    const multi = state.players.length > 1;
     $("turnBanner").textContent = state.over ? "Game over"
-      : `Turn ${state.round} of ${S.CATEGORIES.length}` + (state.players.length > 1 ? ` · ${p.name}'s turn` : "");
+      : `Turn ${state.round} of ${S.CATEGORIES.length}` + (multi ? ` · ${p.name}'s turn` : "");
+    $("undoBtn").disabled = !state.undo;
+
+    let status;
+    if (state.mode === "virtual") {
+      const left = ROLLS_PER_TURN - state.rollsUsed;
+      $("rollBtn").disabled = state.over || left === 0;
+      $("rollBtn").textContent = state.rollsUsed === 0 ? "Roll" : left === 0 ? "No rolls left" : "Roll again";
+      status = state.rollsUsed === 0 ? "Roll to start the turn"
+        : left === 0 ? "Pick a box on the scorecard"
+        : `${left} roll${left === 1 ? "" : "s"} left · tap dice to hold · or pick a box`;
+    } else {
+      const filled = state.dice.filter(Boolean).length;
+      status = filled < 5 ? `Enter your final dice (${filled} of 5) · tap a die to change it`
+        : "Now pick a box on the scorecard";
+    }
+    $("statusLine").textContent = state.over ? "" : status;
+
+    if (!state.over) store.set(SAVE_KEY, snapshotForSave());
+  }
+
+  function snapshotForSave() { return { ...state }; }
+
+  // ---------- profiles view ----------
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  const fmt1 = (x) => (Math.round(x * 10) / 10).toString();
+  const dateStr = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+  function sparkline(scores, avg) {
+    const W = 280, H = 64, PAD = 6;
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("class", "spark");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `Last ${scores.length} scores: ${scores.join(", ")}`);
+    const min = Math.min(...scores, avg), max = Math.max(...scores, avg);
+    const span = Math.max(1, max - min);
+    const x = (i) => scores.length === 1 ? W / 2 : PAD + (i * (W - 2 * PAD)) / (scores.length - 1);
+    const y = (v) => H - PAD - ((v - min) / span) * (H - 2 * PAD);
+    const mk = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+
+    svg.append(mk("line", { x1: PAD, x2: W - PAD, y1: y(avg), y2: y(avg), class: "spark-avg" }));
+    if (scores.length > 1) svg.append(mk("polyline", { points: scores.map((v, i) => `${x(i)},${y(v)}`).join(" "), class: "spark-line" }));
+    scores.forEach((v, i) => {
+      const g = mk("g", { class: "spark-pt" });
+      const t = mk("title", {}); t.textContent = `Game ${i + 1} of last ${scores.length}: ${v}`;
+      g.append(t, mk("circle", { cx: x(i), cy: y(v), r: 12, class: "spark-hit" }), mk("circle", { cx: x(i), cy: y(v), r: 4, class: "spark-dot" }));
+      svg.append(g);
+    });
+    return svg;
+  }
+
+  function tile(label, value, sub) {
+    return el("div", { className: "tile" },
+      el("span", { className: "tile-label", textContent: label }),
+      el("span", { className: "tile-value", textContent: value }),
+      sub ? el("span", { className: "tile-sub", textContent: sub }) : null);
+  }
+
+  function profileCard(p) {
+    const s = P.stats(p);
+    const card = el("article", { className: "panel profile" });
+
+    const title = el("div", { className: "profile-head" },
+      el("div", {}, el("h3", { textContent: p.name }),
+        el("span", { className: "muted small-text", textContent: s.games
+          ? `${s.games} game${s.games === 1 ? "" : "s"} · last played ${dateStr(s.lastPlayed)}`
+          : "No games yet" })));
+    const actions = el("div", { className: "row-gap" });
+    const renameBtn = el("button", { type: "button", className: "ghost small", textContent: "Rename" });
+    const delBtn = el("button", { type: "button", className: "ghost small danger", textContent: "Delete" });
+    renameBtn.addEventListener("click", () => {
+      const n = prompt("New name", p.name);
+      if (n == null) return;
+      try { P.renameProfile(data, p.id, n); P.save(data); renderProfiles(); }
+      catch (e) { alert(e.message); }
+    });
+    delBtn.addEventListener("click", () => {
+      if (!confirm(`Delete ${p.name} and all ${s.games} saved game${s.games === 1 ? "" : "s"}? This can't be undone.`)) return;
+      P.deleteProfile(data, p.id); P.save(data); renderProfiles();
+    });
+    actions.append(renameBtn, delBtn);
+    title.append(actions);
+    card.append(title);
+
+    if (!s.games) {
+      card.append(el("p", { className: "muted", textContent: "Finish a game with this profile to start tracking stats." }));
+      return card;
+    }
+
+    card.append(el("div", { className: "tiles" },
+      tile("Best", s.best, `low ${s.worst}`),
+      tile("Average", fmt1(s.average), `last 10: ${fmt1(s.recentAverage)}`),
+      tile("Wins", s.multiGames ? `${s.wins}–${s.multiGames - s.wins}` : "—", s.multiGames ? `${pct(s.winRate)} of multiplayer` : "solo only"),
+      tile("Upper bonus", pct(s.bonusRate), "of games"),
+      tile("Five of a Kinds", s.fiveKinds, `${fmt1(s.fiveKinds / s.games)} per game`),
+    ));
+
+    const trend = el("div", { className: "trend" },
+      el("div", { className: "trend-head" },
+        el("span", { textContent: `Score trend (last ${s.recentScores.length})` }),
+        el("span", { className: "muted small-text" }, el("span", { className: "avg-key" }), ` average ${fmt1(s.average)}`)));
+    trend.append(sparkline(s.recentScores, s.average));
+    card.append(trend);
+
+    const tbl = el("table", { className: "breakdown" },
+      el("thead", {}, el("tr", {}, el("th", { textContent: "Category" }), el("th", { textContent: "Avg" }), el("th", { textContent: "Scratched" }))));
+    const tb = el("tbody");
+    for (const k of S.CATEGORIES) {
+      tb.append(el("tr", {}, el("td", { textContent: S.LABELS[k] }), el("td", { textContent: fmt1(s.catAvg[k]) }), el("td", { textContent: pct(s.catZeroRate[k]) })));
+    }
+    tbl.append(tb);
+    card.append(el("details", { className: "more" }, el("summary", { textContent: "Category breakdown" }), tbl));
+
+    const recent = el("ul", { className: "recent" });
+    for (const g of p.games.slice(-8).reverse()) {
+      const res = g.opponents ? (g.won ? "Won" : "Lost") : "Solo";
+      recent.append(el("li", {},
+        el("span", { textContent: dateStr(g.date) }),
+        el("span", { className: "muted", textContent: g.opponents ? `${res} vs ${g.opponents}` : res }),
+        el("b", { textContent: g.score })));
+    }
+    card.append(el("details", { className: "more" }, el("summary", { textContent: "Recent games" }), recent));
+    return card;
+  }
+
+  function renderProfiles() {
+    const box = $("profileList");
+    box.innerHTML = "";
+    const all = P.list(data);
+    if (!all.length) box.append(el("p", { className: "panel muted", textContent: "No profiles yet. Add one above, or create one when you start a game." }));
+    for (const p of all) box.append(profileCard(p));
+  }
+
+  function exportProfiles() {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: `five-dice-profiles-${new Date().toISOString().slice(0, 10)}.json` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    $("backupMsg").textContent = "Backup downloaded.";
+  }
+
+  async function importProfiles(file) {
+    try {
+      const r = P.merge(data, JSON.parse(await file.text()));
+      P.save(data);
+      $("backupMsg").textContent = `Imported: ${r.added} new, ${r.updated} updated.`;
+      renderProfiles();
+    } catch (e) {
+      $("backupMsg").textContent = e instanceof SyntaxError ? "That file isn't valid JSON." : e.message;
+    }
   }
 
   // ---------- wiring ----------
   buildDice();
-  addPlayerInput();
-  renderBest();
-  $("addPlayer").addEventListener("click", () => { addPlayerInput(); const ins = $("playerInputs").querySelectorAll("input"); ins[ins.length - 1].focus(); });
+  $("tabPlay").addEventListener("click", () => showView("play"));
+  $("tabProfiles").addEventListener("click", () => showView("profiles"));
+  $("addPlayer").addEventListener("click", addPlayerRow);
   $("startBtn").addEventListener("click", startGame);
+  $("resumeBtn").addEventListener("click", resumeGame);
+  $("discardBtn").addEventListener("click", () => { store.del(SAVE_KEY); renderSetup(); });
   $("rollBtn").addEventListener("click", roll);
-  $("newGameBtn").addEventListener("click", () => { if ($("endDialog").open) $("endDialog").close(); showSetup(); });
-  $("playAgain").addEventListener("click", () => setTimeout(startGame, 0));
+  $("clearDice").addEventListener("click", () => { state.dice = [null, null, null, null, null]; render(); });
+  $("undoBtn").addEventListener("click", undo);
+  $("quitBtn").addEventListener("click", quit);
+  $("playAgain").addEventListener("click", () => { $("endDialog").close(); state = null; showView("play"); });
+  $("viewStats").addEventListener("click", () => { $("endDialog").close(); state = null; showView("profiles"); });
+  $("endDialog").addEventListener("cancel", () => { state = null; setTimeout(() => showView("play"), 0); });
+  $("newProfileForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    try { P.createProfile(data, $("newProfileName").value); P.save(data); $("newProfileName").value = ""; $("profileError").textContent = ""; renderProfiles(); }
+    catch (er) { $("profileError").textContent = er.message; }
+  });
+  $("exportBtn").addEventListener("click", exportProfiles);
+  $("importFile").addEventListener("change", (e) => { if (e.target.files[0]) importProfiles(e.target.files[0]); e.target.value = ""; });
 
   document.addEventListener("keydown", (e) => {
-    if ($("game").classList.contains("hidden") || $("endDialog").open) return;
-    if (e.target.tagName === "INPUT") return;
-    if (e.code === "Space" && !(e.target.classList && e.target.classList.contains("pick"))) { e.preventDefault(); roll(); }
-    else if (/^[1-5]$/.test(e.key)) toggleHold(Number(e.key) - 1);
+    if (!state || state.over || $("game").classList.contains("hidden") || $("endDialog").open) return;
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+    const onPick = e.target.classList && e.target.classList.contains("pick");
+    if (state.mode === "virtual") {
+      if (e.code === "Space" && !onPick) { e.preventDefault(); roll(); }
+      else if (/^[1-5]$/.test(e.key)) tapDie(Number(e.key) - 1);
+    } else {
+      if (/^[1-6]$/.test(e.key)) enterFace(Number(e.key));
+      else if (e.key === "Backspace") { e.preventDefault(); removeLastFace(); }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); }
   });
+
+  // Keep profiles in sync if another tab changes them.
+  window.addEventListener("storage", (e) => { if (e.key === "five-dice-profiles") { data = P.load(); if (!$("profilesView").classList.contains("hidden")) renderProfiles(); } });
+
+  showView("play");
 })();

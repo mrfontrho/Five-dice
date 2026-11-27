@@ -10,44 +10,81 @@
   <main class="app">
     <header class="top">
       <h1>Five Dice</h1>
-      <div class="top-actions">
-        <span class="best" id="best"></span>
-        <button class="ghost" id="newGameBtn" type="button">New game</button>
-      </div>
+      <nav class="tabs" aria-label="Sections">
+        <button type="button" class="tab active" id="tabPlay" aria-pressed="true">Play</button>
+        <button type="button" class="tab" id="tabProfiles" aria-pressed="false">Profiles</button>
+      </nav>
     </header>
 
-    <section class="setup" id="setup">
-      <h2>Who's playing?</h2>
-      <div id="playerInputs" class="player-inputs"></div>
-      <div class="setup-actions">
-        <button class="ghost" id="addPlayer" type="button">+ Add player</button>
-        <button class="primary" id="startBtn" type="button">Start</button>
+    <!-- ===== New game setup ===== -->
+    <section class="panel setup" id="setup">
+      <div class="resume hidden" id="resumeBox">
+        <span id="resumeText">You have a game in progress.</span>
+        <div class="row-gap">
+          <button class="ghost" id="discardBtn" type="button">Discard</button>
+          <button class="primary" id="resumeBtn" type="button">Resume</button>
+        </div>
       </div>
+
+      <h2>Players</h2>
+      <div id="playerRows" class="player-rows"></div>
+      <button class="ghost small" id="addPlayer" type="button">+ Add player</button>
+
+      <h2>Dice</h2>
+      <div class="mode-pick" role="radiogroup" aria-label="Dice mode">
+        <label class="mode-opt">
+          <input type="radio" name="mode" value="virtual" checked>
+          <span><b>Roll in the app</b><small>Tap Roll; hold dice between rolls.</small></span>
+        </label>
+        <label class="mode-opt">
+          <input type="radio" name="mode" value="manual">
+          <span><b>Use my own dice</b><small>Roll real dice, tap in what you got, and the app keeps score.</small></span>
+        </label>
+      </div>
+
+      <p class="error" id="setupError" role="alert"></p>
+      <button class="primary wide" id="startBtn" type="button">Start game</button>
+
       <details class="rules">
         <summary>How to play</summary>
-        <p>Each turn you get up to three rolls. Tap dice to hold them between rolls, then pick one
-          box on the scorecard to score. Every box is used exactly once; after 13 turns the highest
-          total wins.</p>
+        <p>Each turn you get up to three rolls. Hold the dice you want to keep between rolls, then pick
+          one box on the scorecard. Every box is used exactly once, and after 13 turns the highest total wins.</p>
         <ul>
-          <li><b>Upper section:</b> sum of the matching faces. Reach 63 for a +35 bonus.</li>
+          <li><b>Upper section:</b> add up the matching faces. Reach 63 for a +35 bonus.</li>
           <li><b>Full House</b> 25 · <b>Small Straight</b> (4 in a row) 30 · <b>Large Straight</b> 40 · <b>Five of a Kind</b> 50.</li>
-          <li>Each extra Five of a Kind is worth +100 if you already scored 50 there, and acts as a
+          <li>Each extra Five of a Kind is worth +100 if you already scored 50 there. It also acts as a
             joker: fill the matching upper box if it's open, otherwise any lower box at full value.</li>
-          <li>Keys: <kbd>Space</kbd> roll, <kbd>1</kbd>–<kbd>5</kbd> hold dice.</li>
+          <li>Keys: <kbd>Space</kbd> roll, <kbd>1</kbd>–<kbd>5</kbd> hold dice (own dice: <kbd>1</kbd>–<kbd>6</kbd> enter a face, <kbd>Backspace</kbd> remove one).</li>
         </ul>
       </details>
     </section>
 
+    <!-- ===== Game ===== -->
     <section class="game hidden" id="game">
-      <div class="turn-banner" id="turnBanner"></div>
-
-      <div class="dice-area">
-        <div class="dice" id="dice"></div>
-        <button class="primary roll" id="rollBtn" type="button">Roll</button>
-        <div class="rolls-left" id="rollsLeft"></div>
+      <div class="turn-bar">
+        <div class="turn-banner" id="turnBanner"></div>
+        <div class="row-gap">
+          <button class="ghost small" id="undoBtn" type="button" disabled>Undo</button>
+          <button class="ghost small" id="quitBtn" type="button">End game</button>
+        </div>
       </div>
 
-      <div class="card-wrap">
+      <div class="panel dice-area">
+        <div class="dice" id="dice"></div>
+
+        <div class="virtual-controls" id="virtualControls">
+          <button class="primary roll" id="rollBtn" type="button">Roll</button>
+        </div>
+
+        <div class="manual-controls hidden" id="manualControls">
+          <div class="face-pad" id="facePad" aria-label="Enter a die face"></div>
+          <button class="ghost small" id="clearDice" type="button">Clear dice</button>
+        </div>
+
+        <div class="status-line" id="statusLine"></div>
+      </div>
+
+      <div class="panel card-wrap">
         <table class="card" id="card">
           <thead><tr id="cardHead"><th>Category</th></tr></thead>
           <tbody id="cardBody"></tbody>
@@ -55,14 +92,42 @@
       </div>
     </section>
 
+    <!-- ===== Profiles ===== -->
+    <section class="profiles hidden" id="profilesView">
+      <div class="panel">
+        <h2>Add a profile</h2>
+        <form class="row-gap" id="newProfileForm">
+          <input type="text" id="newProfileName" maxlength="16" placeholder="Name" aria-label="New profile name">
+          <button class="primary" type="submit">Add</button>
+        </form>
+        <p class="error" id="profileError" role="alert"></p>
+      </div>
+
+      <div id="profileList" class="profile-list"></div>
+
+      <div class="panel backup">
+        <h2>Backup</h2>
+        <p class="muted">Profiles are saved in this browser only. Export a backup to keep them safe or move them to another device.</p>
+        <div class="row-gap">
+          <button class="ghost" id="exportBtn" type="button">Export</button>
+          <label class="ghost button-like">Import<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+        </div>
+        <p class="muted" id="backupMsg" role="status"></p>
+      </div>
+    </section>
+
     <dialog id="endDialog">
       <h2 id="endTitle"></h2>
-      <ol id="endList"></ol>
-      <form method="dialog"><button class="primary" id="playAgain">Play again</button></form>
+      <ol id="endList" class="end-list"></ol>
+      <div class="row-gap end-actions">
+        <button class="ghost" id="viewStats" type="button">View stats</button>
+        <button class="primary" id="playAgain" type="button">Play again</button>
+      </div>
     </dialog>
   </main>
 
   <script src="scoring.js"></script>
+  <script src="profiles.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
