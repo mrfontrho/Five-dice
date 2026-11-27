@@ -28,6 +28,25 @@ Totals, the upper bonus (+35 at 63), the Five of a Kind bonus (+100) and joker r
 handled for you. **Undo** takes back the last box scored. A game in progress is saved
 automatically, so you can close the page and resume later.
 
+### Scoring a turn
+
+On the Scorecard tab, tap a box to **select** it. The total, subtotals and every player's total at the
+top update live to show the result. Tap a different box to change your mind (or the same box
+to clear it), then tap **Score** at the bottom to confirm.
+
+### Single game or match
+
+On the setup screen choose how many games to play (1–15) and, for more than one game, how the
+match is decided:
+
+- **Total points:** highest combined score across all games wins.
+- **Most wins:** most games won wins ("best of"). The match ends early once nobody can catch
+  the leader. A tied game counts as a win for each tied player; tied wins are broken by total points.
+  Needs at least two players.
+
+A different player starts each game. Between games a summary shows the game result and the match
+standings, and during a match the score chips show each player's wins (`2W`) or running match total (`Σ410`).
+
 ### Profiles and stats
 
 Pick a saved profile for each player when starting a game (or create one on the spot, or play
@@ -51,8 +70,9 @@ Profiles are stored in the browser (`localStorage`), so they stay on that device
 | `style.css` | Styles (light and dark mode, phone friendly) |
 | `scoring.js` | Pure scoring rules, shared by the game and the tests |
 | `profiles.js` | Profile storage, game history and stats |
+| `match.js` | Match rules: points vs. wins, early finish, standings |
 | `game.js` | Setup, turn flow, dice, scorecard and profile screens |
-| `tests/` | Unit tests for scoring and profile stats |
+| `tests/` | Unit tests for scoring, profile stats and match rules |
 
 ## Tests
 

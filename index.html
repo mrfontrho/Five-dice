@@ -42,6 +42,20 @@
         </label>
       </div>
 
+      <h2>Games</h2>
+      <div class="match-pick">
+        <div class="stepper" role="group" aria-label="Number of games">
+          <button type="button" class="ghost" id="gamesMinus" aria-label="Fewer games">−</button>
+          <output id="gamesOut" aria-live="polite">1</output>
+          <button type="button" class="ghost" id="gamesPlus" aria-label="More games">+</button>
+        </div>
+        <div class="seg" id="methodSeg" role="radiogroup" aria-label="Match scoring">
+          <label><input type="radio" name="method" value="points" checked><span>Total points</span></label>
+          <label><input type="radio" name="method" value="wins"><span>Most wins</span></label>
+        </div>
+      </div>
+      <p class="match-hint muted" id="matchHint"></p>
+
       <p class="error" id="setupError" role="alert"></p>
       <button class="primary wide" id="startBtn" type="button">Start game</button>
 
@@ -54,7 +68,8 @@
           <li><b>Full House</b> 25 · <b>Small Straight</b> (4 in a row) 30 · <b>Large Straight</b> 40 · <b>Five of a Kind</b> 50.</li>
           <li>Each extra Five of a Kind is worth +100 if you already scored 50 there. It also acts as a
             joker: fill the matching upper box if it's open, otherwise any lower box at full value.</li>
-          <li>Roll and hold on the <b>Dice</b> tab, then switch to the <b>Scorecard</b> tab (it opens by itself after your third roll). Every box you can use shows a dashed bubble with what your dice would score there; tap one to take it. Scores already locked in show a ✓.</li>
+          <li>Roll and hold on the <b>Dice</b> tab, then switch to the <b>Scorecard</b> tab (it opens by itself after your third roll). Every box you can use shows a dashed bubble with what your dice would score there. Tap a box to select it (the totals show the result), then tap <b>Score</b> to confirm.</li>
+          <li><b>Games:</b> play a single game or a match of several. Score the match by <b>total points</b> across all games, or by <b>most wins</b> (it ends early once nobody can catch the leader; tied wins go to whoever has more points).</li>
           <li>Keys: <kbd>Space</kbd> roll, <kbd>1</kbd>–<kbd>5</kbd> hold dice, <kbd>S</kbd> Scorecard tab, <kbd>D</kbd> Dice tab (own dice: <kbd>1</kbd>–<kbd>6</kbd> enter a face, <kbd>Backspace</kbd> remove one).</li>
         </ul>
       </details>
@@ -112,6 +127,9 @@
           <div class="col" id="colLower" role="group" aria-label="Lower section"></div>
           <div class="grand"><span>Total</span><b id="grandTotal">0</b></div>
         </div>
+        <div class="confirm-bar">
+          <button class="primary wide" id="confirmBtn" type="button" disabled>Select a box</button>
+        </div>
       </div>
     </section>
 
@@ -141,16 +159,19 @@
 
     <dialog id="endDialog">
       <h2 id="endTitle"></h2>
-      <ol id="endList" class="end-list"></ol>
+      <p class="muted end-sub" id="endSub"></p>
+      <table class="end-table" id="endTable"></table>
       <div class="row-gap end-actions">
         <button class="ghost" id="viewStats" type="button">View stats</button>
         <button class="primary" id="playAgain" type="button">Play again</button>
+        <button class="primary" id="nextGame" type="button">Next game</button>
       </div>
     </dialog>
   </main>
 
   <script src="scoring.js"></script>
   <script src="profiles.js"></script>
+  <script src="match.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

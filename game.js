@@ -1,6 +1,9 @@
 (function () {
   const S = window.Scoring;
   const P = window.Profiles;
+  const M = window.Match;
+  const SETTINGS_KEY = "five-dice-last-settings";
+  const MAX_GAMES = 15;
   const MAX_PLAYERS = 4;
   const ROLLS_PER_TURN = 3;
   const SAVE_KEY = "five-dice-current";
@@ -49,19 +52,19 @@
     nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") startGame(); });
 
     for (const p of P.list(data)) select.append(el("option", { value: p.id, textContent: p.name }));
-    select.append(el("option", { value: NEW, textContent: "+ New profile…" }));
-    select.append(el("option", { value: GUEST, textContent: "Guest (stats not saved)" }));
+    select.append(el("option", { value: NEW, textContent: "+ New profile" }));
+    select.append(el("option", { value: GUEST, textContent: "Guest" }));
 
     const sync = () => {
       const v = select.value;
       nameInput.classList.toggle("hidden", v !== NEW && v !== GUEST);
-      nameInput.placeholder = v === NEW ? "Profile name" : "Guest name (optional)";
+      nameInput.placeholder = v === NEW ? "Name" : "Name (optional)";
     };
     select.addEventListener("change", () => { sync(); if (!nameInput.classList.contains("hidden")) nameInput.focus(); });
 
     const row = el("div", { className: "player-row" }, select, nameInput);
     const rm = el("button", { type: "button", className: "ghost icon", textContent: "✕", ariaLabel: "Remove player" });
-    rm.addEventListener("click", () => { row.remove(); refreshRows(); });
+    rm.addEventListener("click", () => { row.remove(); refreshRows(); updateMatchControls(); });
     row.append(rm);
 
     const valid = choice && (choice === GUEST || choice === NEW || data.profiles[choice]);
@@ -84,10 +87,38 @@
     refreshRows();
     $("setupError").textContent = "";
 
+    const st = store.get(SETTINGS_KEY) || {};
+    const modeInput = document.querySelector(`input[name="mode"][value="${st.mode}"]`);
+    if (modeInput) modeInput.checked = true;
+    const methodInput = document.querySelector(`input[name="method"][value="${st.method}"]`);
+    if (methodInput) methodInput.checked = true;
+    setupGames = Math.min(MAX_GAMES, Math.max(1, Number(st.games) || 1));
+    updateMatchControls();
+
     const saved = store.get(SAVE_KEY);
     $("resumeBox").classList.toggle("hidden", !saved);
-    if (saved) $("resumeText").textContent =
-      `Game in progress: turn ${saved.round} of 13 · ${saved.players.map((p) => p.name).join(", ")}`;
+    if (saved) {
+      const m = saved.match;
+      $("resumeText").textContent = (m && m.games > 1 ? `Game ${m.played + 1} of ${m.games} · ` : "") +
+        `Turn ${saved.round}/13 · ${saved.players.map((p) => p.name).join(", ")}`;
+    }
+  }
+
+  // Number of games + scoring method. "Most wins" needs 2+ players and 2+ games.
+  let setupGames = 1;
+  function updateMatchControls() {
+    $("gamesOut").textContent = setupGames;
+    $("gamesMinus").disabled = setupGames <= 1;
+    $("gamesPlus").disabled = setupGames >= MAX_GAMES;
+    const multiPlayer = $("playerRows").children.length > 1;
+    const winsInput = document.querySelector('input[name="method"][value="wins"]');
+    winsInput.disabled = !multiPlayer;
+    if (!multiPlayer && winsInput.checked) document.querySelector('input[name="method"][value="points"]').checked = true;
+    $("methodSeg").classList.toggle("hidden", setupGames === 1);
+    const method = document.querySelector('input[name="method"]:checked').value;
+    $("matchHint").textContent = setupGames === 1 ? "Single game"
+      : method === "wins" ? `Best of ${setupGames}: most games won takes the match`
+      : `${setupGames} games: highest combined score takes the match`;
   }
 
   function addPlayerRow() {
@@ -98,6 +129,7 @@
     const row = playerRow(next ? next.id : NEW);
     $("playerRows").append(row);
     refreshRows();
+    updateMatchControls();
     row.querySelector("select").focus();
   }
 
@@ -127,10 +159,13 @@
     store.set(LINEUP_KEY, chosen.filter((c) => c.kind === "profile").map((c) => c.id));
 
     const mode = document.querySelector('input[name="mode"]:checked').value;
+    const method = document.querySelector('input[name="method"]:checked').value;
+    store.set(SETTINGS_KEY, { mode, method, games: setupGames });
     state = {
       mode,
       players: chosen.map((c) => ({ name: c.name, profileId: c.kind === "profile" ? c.id : null, card: {}, fiveKindBonus: 0 })),
-      current: 0, round: 1, over: false, lastPlaced: null, undo: null,
+      match: M.newMatch(setupGames, method, chosen.length),
+      first: 0, current: 0, round: 1, over: false, lastPlaced: null, undo: null, selected: null,
       dice: [], held: [], rollsUsed: 0, tab: "dice", viewPlayer: null,
     };
     resetTurn();
@@ -139,7 +174,7 @@
 
   function enterGame() {
     buildCard();
-    $("game").classList.toggle("multi", state.players.length > 1);
+    $("game").classList.toggle("multi", showStandings());
     $("virtualControls").classList.toggle("hidden", state.mode !== "virtual");
     $("manualControls").classList.toggle("hidden", state.mode !== "manual");
     showView("play");
@@ -166,14 +201,18 @@
   function resumeGame() {
     const saved = store.get(SAVE_KEY);
     if (!saved) return renderSetup();
-    state = { tab: "dice", viewPlayer: null, ...saved, rolling: false };
+    state = { tab: "dice", viewPlayer: null, first: 0, selected: null, ...saved, rolling: false };
+    if (!state.match) state.match = M.newMatch(1, "points", state.players.length);
     // A profile deleted meanwhile becomes a guest.
     for (const p of state.players) if (p.profileId && !data.profiles[p.profileId]) p.profileId = null;
     enterGame();
   }
 
   // ---------- turn flow ----------
+  const showStandings = () => state.players.length > 1 || state.match.games > 1;
+
   function resetTurn() {
+    state.selected = null;
     state.rollsUsed = 0;
     state.held = [false, false, false, false, false];
     state.dice = state.mode === "manual" ? [null, null, null, null, null] : [1, 1, 1, 1, 1];
@@ -194,6 +233,7 @@
     const moving = state.dice.map((_, i) => !(state.held[i] && state.rollsUsed > 0));
     const final = state.dice.map((d, i) => (moving[i] ? randomFace() : d));
     state.rollsUsed++;
+    state.selected = null;
 
     const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) { state.dice = final; render(); autoFlipAfterFinalRoll(); return; }
@@ -256,6 +296,7 @@
     if (!state || state.over || state.rolling) return;
     if (state.mode === "manual") {
       state.dice[i] = state.dice[i] ? (state.dice[i] % 6) + 1 : 1; // cycle 1..6
+      state.selected = null;
     } else {
       if (state.rollsUsed === 0 || state.rollsUsed >= ROLLS_PER_TURN) return;
       state.held[i] = !state.held[i];
@@ -268,12 +309,14 @@
     const i = state.dice.indexOf(null);
     if (i === -1) return;
     state.dice[i] = v;
+    state.selected = null;
     render();
   }
 
   function removeLastFace() {
     if (!state || state.mode !== "manual") return;
     for (let i = 4; i >= 0; i--) if (state.dice[i]) { state.dice[i] = null; break; }
+    state.selected = null;
     render();
   }
 
@@ -292,13 +335,12 @@
     p.card[category] = S.scoreFor(category, state.dice, p.card);
     state.lastPlaced = { player: state.current, category, value: p.card[category], bonus };
 
-    if (state.current === state.players.length - 1) {
-      if (state.round === S.CATEGORIES.length) return finish();
+    const next = (state.current + 1) % state.players.length;
+    if (next === state.first) {
+      if (state.round === S.CATEGORIES.length) return endGame();
       state.round++;
-      state.current = 0;
-    } else {
-      state.current++;
     }
+    state.current = next;
     resetTurn();
     state.undo = before;
     setTab("dice"); // next turn starts on the Dice tab
@@ -318,39 +360,104 @@
     showView("play");
   }
 
-  function finish() {
-    state.over = true;
-    state.undo = null;
-    store.del(SAVE_KEY);
-    renderCard();
+  // Two-step scoring: tap a box to select it, then confirm.
+  function select(key) {
+    if (!state || state.over || !ready() || viewIdx() !== state.current) return;
+    if (!S.allowedCategories(state.dice, state.players[state.current].card).includes(key)) return;
+    state.selected = state.selected === key ? null : key;
+    render();
+    if (state.selected) $("confirmBtn").focus({ preventScroll: true });
+  }
 
-    const results = state.players.map((p) => ({ p, total: S.totals(p.card, p.fiveKindBonus).grand }));
-    const top = Math.max(...results.map((r) => r.total));
+  function confirmSelection() {
+    if (state && state.selected) place(state.selected);
+  }
+
+  function endGame() {
+    state.undo = null;
     const multi = state.players.length > 1;
+    const totals = state.players.map((p) => S.totals(p.card, p.fiveKindBonus).grand);
+    const won = M.applyGame(state.match, totals);
+    const m = state.match;
+    const matchOver = M.isOver(m);
+    const series = m.games > 1;
+
+    // Each game is recorded to profile stats on its own.
+    const results = state.players.map((p, i) => ({ p, i, total: totals[i], won: won[i] }));
     for (const r of results) {
-      r.won = multi && r.total === top;
-      if (r.p.profileId) {
-        const rec = P.recordGame(data, r.p.profileId, {
-          card: r.p.card, fiveKindBonus: r.p.fiveKindBonus, opponents: state.players.length - 1, won: r.won,
-        });
-        r.personalBest = rec && rec.personalBest;
-      }
+      if (!r.p.profileId) continue;
+      const rec = P.recordGame(data, r.p.profileId, {
+        card: r.p.card, fiveKindBonus: r.p.fiveKindBonus, opponents: state.players.length - 1, won: r.won,
+      });
+      r.personalBest = rec && rec.personalBest;
     }
     if (results.some((r) => r.p.profileId)) P.save(data);
 
-    const winners = results.filter((r) => r.total === top);
-    $("endTitle").textContent = !multi ? `Final score: ${top}`
-      : winners.length > 1 ? `Tie at ${top}!` : `${winners[0].p.name} wins with ${top}!`;
-    const list = $("endList");
-    list.innerHTML = "";
-    for (const r of [...results].sort((a, b) => b.total - a.total)) {
-      const li = el("li", {}, el("span", { textContent: r.p.name }), el("b", { textContent: r.total }));
-      if (r.personalBest) li.append(el("span", { className: "badge", textContent: "New personal best" }));
-      if (!r.p.profileId) li.append(el("span", { className: "muted small-text", textContent: "guest" }));
-      list.append(li);
+    // Title
+    const gameWinners = results.filter((r) => r.won);
+    const gameLine = !multi ? `${totals[0]} points`
+      : gameWinners.length > 1 ? `Tie at ${gameWinners[0].total}` : `${gameWinners[0].p.name} wins with ${gameWinners[0].total}`;
+    let title, sub = "";
+    if (!series) {
+      title = multi ? gameLine : `Final score: ${totals[0]}`;
+    } else if (!matchOver) {
+      title = `Game ${m.played} of ${m.games}`;
+      sub = gameLine;
+    } else {
+      const lead = M.leaders(m);
+      const names = lead.map((i) => state.players[i].name).join(" & ");
+      title = !multi ? `Match total: ${m.points[0]}`
+        : lead.length > 1 ? `${names} share the match`
+        : `${names} wins the match`;
+      sub = m.played < m.games ? `Decided after ${m.played} of ${m.games} games` : `After ${m.games} games`;
     }
-    $("viewStats").classList.toggle("hidden", !results.some((r) => r.p.profileId));
+    $("endTitle").textContent = title;
+    $("endSub").textContent = sub;
+    $("endSub").classList.toggle("hidden", !sub);
+
+    // Results table: this game, plus the match column for a series.
+    const table = $("endTable");
+    table.innerHTML = "";
+    const matchCol = series ? (m.method === "wins" ? "Wins" : "Total") : null;
+    const head = el("tr", {}, el("th"), el("th", { textContent: series ? "Game" : "Score" }));
+    if (matchCol) head.append(el("th", { textContent: matchCol }));
+    table.append(el("thead", {}, head));
+    const body = el("tbody");
+    const order = series ? M.standings(m) : results.map((r) => r.i).sort((a, b) => totals[b] - totals[a]);
+    for (const i of order) {
+      const r = results[i];
+      const name = el("td", {}, el("span", { textContent: r.p.name }));
+      if (r.personalBest) name.append(el("span", { className: "badge", textContent: "Best" }));
+      const tr = el("tr", {}, name, el("td", { textContent: r.total, className: r.won ? "win" : "" }));
+      if (matchCol) tr.append(el("td", { textContent: M.score(m, i) }));
+      body.append(tr);
+    }
+    table.append(body);
+
+    $("nextGame").classList.toggle("hidden", matchOver);
+    $("playAgain").classList.toggle("hidden", !matchOver);
+    $("viewStats").classList.toggle("hidden", !matchOver || !results.some((r) => r.p.profileId));
+
+    if (matchOver) {
+      state.over = true;
+      store.del(SAVE_KEY);
+      render();
+    } else {
+      startNextGame(); // saved right away, so a reload resumes the next game
+    }
     $("endDialog").showModal();
+  }
+
+  function startNextGame() {
+    for (const p of state.players) { p.card = {}; p.fiveKindBonus = 0; }
+    state.first = (state.first + 1) % state.players.length; // a different player starts each game
+    state.current = state.first;
+    state.round = 1;
+    state.lastPlaced = null;
+    state.undo = null;
+    state.viewPlayer = null;
+    resetTurn();
+    setTab("dice");
   }
 
   // ---------- game rendering ----------
@@ -414,7 +521,7 @@
     const box = (key, label) => {
       const b = el("button", { type: "button", className: "box" }, el("span", { className: "box-label" }, label), el("span", { className: "box-val" }));
       b.dataset.key = key;
-      b.addEventListener("click", () => { if (b.classList.contains("pick")) place(key); });
+      b.addEventListener("click", () => { if (b.classList.contains("pick")) select(key); });
       return b;
     };
     const sub = (key, label) => {
@@ -430,6 +537,16 @@
     low.append(sub("fiveKindBonus", "Bonus"));
   }
 
+  // Totals for player i, including the selected-but-unconfirmed box if it's theirs.
+  function projectedTotals(i) {
+    const p = state.players[i];
+    if (state.selected && i === state.current && !state.over && ready()) {
+      const card = { ...p.card, [state.selected]: S.scoreFor(state.selected, state.dice, p.card) };
+      return { t: S.totals(card, p.fiveKindBonus + S.bonusFor(state.dice, p.card)), card, projected: true };
+    }
+    return { t: S.totals(p.card, p.fiveKindBonus), card: p.card, projected: false };
+  }
+
   // Shows one player's card: the current player by default, or another player
   // picked from the standings strip (read-only).
   function renderCard() {
@@ -438,12 +555,14 @@
     const mine = pi === state.current && !state.over;
     const live = mine && ready();
     const allowed = live ? S.allowedCategories(state.dice, p.card) : [];
-    const t = S.totals(p.card, p.fiveKindBonus);
+    if (!allowed.includes(state.selected)) state.selected = null;
+    const { t, card, projected } = projectedTotals(pi);
 
     for (const b of document.querySelectorAll("#sheet .box")) {
       const key = b.dataset.key;
       const val = b.querySelector(".box-val");
-      b.classList.remove("pick", "zero", "filled");
+      b.classList.remove("pick", "zero", "filled", "chosen");
+      b.removeAttribute("aria-pressed");
       b.disabled = true;
       if (p.card[key] !== undefined) {
         val.textContent = p.card[key];
@@ -454,37 +573,59 @@
         val.textContent = v;
         b.classList.add("pick");
         if (v === 0) b.classList.add("zero");
+        if (key === state.selected) b.classList.add("chosen");
         b.disabled = false;
-        b.setAttribute("aria-label", `Score ${v} in ${S.LABELS[key]}`);
+        b.setAttribute("aria-pressed", String(key === state.selected));
+        b.setAttribute("aria-label", `${S.LABELS[key]}: ${v}`);
       } else {
         val.textContent = "";
         b.setAttribute("aria-label", `${S.LABELS[key]}: open`);
       }
     }
 
+    // Subtotals and total reflect the selected box until it's confirmed.
     const subVal = (key) => document.querySelector(`#sheet .sub[data-key="${key}"] .box-val`);
     subVal("upper").textContent = t.upper;
     document.querySelector("#sheet .progress-fill").style.width = `${Math.min(100, (t.upper / S.UPPER_BONUS_THRESHOLD) * 100)}%`;
     document.querySelector('#sheet .sub[data-key="upper"]').title = `${t.upper} of ${S.UPPER_BONUS_THRESHOLD} for the bonus`;
-    const upperDone = S.UPPER.every((k) => p.card[k] !== undefined);
+    const upperDone = S.UPPER.every((k) => card[k] !== undefined);
     subVal("upperBonus").textContent = t.upperBonus ? t.upperBonus : upperDone ? 0 : "";
-    subVal("fiveKindBonus").textContent = t.fiveKindBonus || (p.card.fiveKind !== undefined || state.over ? 0 : "");
+    subVal("fiveKindBonus").textContent = t.fiveKindBonus || (card.fiveKind !== undefined || state.over ? 0 : "");
     $("grandTotal").textContent = t.grand;
+    $("sheet").classList.toggle("projected", projected);
 
-    // Standings strip (multiplayer only): everyone's total, tap to view their card.
+    // Standings: every player's live total (and match score in a series). Tap to view their card.
     const st = $("standings");
     st.innerHTML = "";
-    st.classList.toggle("hidden", state.players.length < 2);
+    st.classList.toggle("hidden", !showStandings());
+    const m = state.match;
     state.players.forEach((pl, i) => {
-      const total = S.totals(pl.card, pl.fiveKindBonus).grand;
-      const chip = el("button", { type: "button", className: "chip" }, el("span", { textContent: pl.name }), el("b", { textContent: total }));
+      const pt = projectedTotals(i);
+      const total = pt.t.grand;
+      const chip = el("button", { type: "button", className: "chip" }, el("span", { textContent: pl.name }),
+        el("b", { textContent: total, className: pt.projected ? "live" : "" }));
+      let matchText = "";
+      if (m.games > 1) {
+        matchText = m.method === "wins" ? `${m.wins[i]}W` : `Σ${m.points[i] + (state.over ? 0 : total)}`;
+        chip.append(el("span", { className: "chip-match", textContent: matchText }));
+      }
       chip.classList.toggle("selected", i === pi);
       chip.classList.toggle("turn", i === state.current && !state.over);
       chip.setAttribute("aria-pressed", String(i === pi));
-      chip.setAttribute("aria-label", `${pl.name}: ${total} points${i === state.current ? ", playing now" : ""}`);
+      chip.setAttribute("aria-label", `${pl.name}: ${total} this game` +
+        (m.games > 1 ? (m.method === "wins" ? `, ${m.wins[i]} wins` : `, ${matchText.slice(1)} match total`) : "") +
+        (i === state.current && !state.over ? ", playing now" : ""));
       chip.addEventListener("click", () => { state.viewPlayer = i === state.current ? null : i; render(); });
       st.append(chip);
     });
+
+    // Confirm bar: only for the current player once there's something to score.
+    const cb = $("confirmBtn");
+    cb.parentElement.classList.toggle("invisible", !live);
+    cb.disabled = !state.selected;
+    cb.textContent = state.selected
+      ? `Score ${S.scoreFor(state.selected, state.dice, p.card)} · ${SHORT[state.selected] || S.LABELS[state.selected]}`
+      : "Select a box";
 
     // Current dice, so you can see what you're scoring without switching tabs.
     const mini = $("miniDice");
@@ -534,8 +675,10 @@
     renderCard();
     const p = state.players[state.current];
     const multi = state.players.length > 1;
-    $("turnBanner").textContent = state.over ? "Game over"
-      : `Turn ${state.round}/${S.CATEGORIES.length}` + (multi ? ` · ${p.name}` : "");
+    const m = state.match;
+    $("turnBanner").textContent = state.over ? (m.games > 1 ? "Match over" : "Game over")
+      : (m.games > 1 ? `Game ${m.played + 1}/${m.games} · ` : "") +
+        `Turn ${state.round}/${S.CATEGORIES.length}` + (multi ? ` · ${p.name}` : "");
     $("undoBtn").disabled = !state.undo || state.rolling;
 
     const isReady = !state.over && ready();
@@ -713,12 +856,18 @@
   $("resumeBtn").addEventListener("click", resumeGame);
   $("discardBtn").addEventListener("click", () => { store.del(SAVE_KEY); renderSetup(); });
   $("rollBtn").addEventListener("click", roll);
-  $("clearDice").addEventListener("click", () => { state.dice = [null, null, null, null, null]; render(); });
+  $("clearDice").addEventListener("click", () => { state.dice = [null, null, null, null, null]; state.selected = null; render(); });
   $("undoBtn").addEventListener("click", undo);
   $("quitBtn").addEventListener("click", quit);
   $("playAgain").addEventListener("click", () => { $("endDialog").close(); state = null; showView("play"); });
+  $("nextGame").addEventListener("click", () => { $("endDialog").close(); $("rollBtn").focus(); });
+  $("confirmBtn").addEventListener("click", confirmSelection);
+  $("gamesMinus").addEventListener("click", () => { setupGames = Math.max(1, setupGames - 1); updateMatchControls(); });
+  $("gamesPlus").addEventListener("click", () => { setupGames = Math.min(MAX_GAMES, setupGames + 1); updateMatchControls(); });
+  for (const r of document.querySelectorAll('input[name="method"]')) r.addEventListener("change", updateMatchControls);
   $("viewStats").addEventListener("click", () => { $("endDialog").close(); state = null; showView("profiles"); });
-  $("endDialog").addEventListener("cancel", () => { state = null; setTimeout(() => showView("play"), 0); });
+  // Esc between games just continues the match; after the match it returns to setup.
+  $("endDialog").addEventListener("cancel", () => { if (state && !state.over) return; state = null; setTimeout(() => showView("play"), 0); });
   $("newProfileForm").addEventListener("submit", (e) => {
     e.preventDefault();
     try { P.createProfile(data, $("newProfileName").value); P.save(data); $("newProfileName").value = ""; $("profileError").textContent = ""; renderProfiles(); }
