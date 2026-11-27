@@ -148,6 +148,7 @@
 
   function setTab(tab) {
     if (!state) return;
+    cancelAutoFlip(); // any tab change (by the player or by the game) supersedes a pending flip
     state.tab = tab;
     const dice = tab === "dice";
     $("dicePanel").hidden = !dice;
@@ -194,7 +195,7 @@
     state.rollsUsed++;
 
     const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion) { state.dice = final; render(); return; }
+    if (reduceMotion) { state.dice = final; render(); autoFlipAfterFinalRoll(); return; }
 
     state.rolling = true;
     render();
@@ -224,8 +225,30 @@
         setTimeout(() => els[i].classList.remove("land"), 300);
       });
       render();
+      autoFlipAfterFinalRoll();
     };
     tick();
+  }
+
+  // After the last roll of a turn there's nothing left to do on the Dice tab, so
+  // flip to the Scorecard once the player has had a moment to see the dice land.
+  const AUTO_FLIP_DELAY = 900;
+  let autoFlipTimer = null;
+  function cancelAutoFlip() { clearTimeout(autoFlipTimer); autoFlipTimer = null; }
+  function autoFlipAfterFinalRoll() {
+    if (state.mode !== "virtual" || state.rollsUsed < ROLLS_PER_TURN) return;
+    const turn = `${state.round}:${state.current}`;
+    $("statusLine").textContent = "Final roll. Opening your scorecard…";
+    cancelAutoFlip();
+    autoFlipTimer = setTimeout(() => {
+      autoFlipTimer = null;
+      // Skip if the turn changed (e.g. undo) or the game ended meanwhile.
+      if (!state || state.over || state.tab !== "dice" || state.rolling) return;
+      if (`${state.round}:${state.current}` !== turn || state.rollsUsed < ROLLS_PER_TURN) return;
+      setTab("card");
+      const first = $("cardBody").querySelector("tr.pick");
+      if (first) first.focus({ preventScroll: true });
+    }, AUTO_FLIP_DELAY);
   }
 
   function tapDie(i) {
@@ -282,6 +305,7 @@
 
   function undo() {
     if (!state || !state.undo || state.rolling) return;
+    cancelAutoFlip();
     state = { ...state.undo, undo: null, rolling: false };
     setTab(state.tab);
   }
@@ -420,11 +444,12 @@
         if (p.card[key] !== undefined) {
           td.textContent = p.card[key];
           tr.classList.add("filled");
-          const lp = state.lastPlaced;
-          if (lp && lp.player === pi && lp.category === key && state.tab === "card") tr.classList.add("just");
+          td.setAttribute("aria-label", `${p.card[key]}, locked in`);
         } else if (allowed.includes(key)) {
           const v = S.scoreFor(key, state.dice, p.card);
-          td.textContent = v;
+          td.textContent = "";
+          td.removeAttribute("aria-label");
+          td.append(el("span", { className: "preview", textContent: v }));
           tr.classList.add("pick");
           if (v === 0) tr.classList.add("zero");
           tr.tabIndex = 0;
@@ -432,6 +457,7 @@
           tr.setAttribute("aria-label", `Score ${v} in ${S.LABELS[key]}`);
         } else {
           td.textContent = "";
+          td.removeAttribute("aria-label");
           tr.classList.add("open");
         }
       } else if (key === "upperBonus" && !t.upperBonus) {
@@ -488,7 +514,7 @@
         backBtn(state.mode === "virtual" ? "Go roll" : "Enter dice"));
     } else {
       const left = ROLLS_PER_TURN - state.rollsUsed;
-      note.append(el("span", { textContent: "Tap a box to score it." }));
+      note.append(el("span", { textContent: left === 0 && state.mode === "virtual" ? "Final roll: tap a dashed box to score it." : "Tap a dashed box to score it." }));
       if (state.mode === "virtual" && left > 0) note.append(backBtn(`Roll again (${left} left)`));
       if (state.mode === "manual") note.append(backBtn("Change dice"));
     }

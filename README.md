@@ -17,7 +17,7 @@ During a game you switch between two tabs (tap them, or press `D` / `S`):
   rolled, a dot appears on the Scorecard tab and a shortcut shows your best-scoring option.
 - **Scorecard:** the current player's card. Every box you're allowed to use shows what your
   current dice would score there (zeros in orange). Tap one to score it, and the next turn
-  starts back on the Dice tab. The dice you're scoring are shown at the top. In multiplayer, a
+  starts back on the Dice tab. After your third roll the Scorecard opens by itself. Possible scores appear in dashed bubbles; scores already locked in show a ✓. The dice you're scoring are shown at the top. In multiplayer, a
   strip of everyone's totals lets you look at another player's card.
 
 **Use my own dice** mode works the same way, except the Dice tab has face buttons (or keys

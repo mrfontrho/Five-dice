@@ -54,7 +54,7 @@
           <li><b>Full House</b> 25 · <b>Small Straight</b> (4 in a row) 30 · <b>Large Straight</b> 40 · <b>Five of a Kind</b> 50.</li>
           <li>Each extra Five of a Kind is worth +100 if you already scored 50 there. It also acts as a
             joker: fill the matching upper box if it's open, otherwise any lower box at full value.</li>
-          <li>Roll and hold on the <b>Dice</b> tab, then switch to the <b>Scorecard</b> tab: every box you can use shows what your dice would score there. Tap one to take it.</li>
+          <li>Roll and hold on the <b>Dice</b> tab, then switch to the <b>Scorecard</b> tab (it opens by itself after your third roll). Every box you can use shows a dashed bubble with what your dice would score there; tap one to take it. Scores already locked in show a ✓.</li>
           <li>Keys: <kbd>Space</kbd> roll, <kbd>1</kbd>–<kbd>5</kbd> hold dice, <kbd>S</kbd> Scorecard tab, <kbd>D</kbd> Dice tab (own dice: <kbd>1</kbd>–<kbd>6</kbd> enter a face, <kbd>Backspace</kbd> remove one).</li>
         </ul>
       </details>
@@ -108,6 +108,10 @@
           <div class="card-note" id="cardNote"></div>
         </div>
         <div class="panel card-wrap">
+          <div class="card-legend" id="cardLegend" aria-hidden="true">
+            <span><span class="preview">25</span> possible score: tap to take it</span>
+            <span><span class="locked">25</span> locked in</span>
+          </div>
           <table class="card" id="card">
             <thead><tr><th>Category</th><th id="cardWho">Score</th></tr></thead>
             <tbody id="cardBody"></tbody>
