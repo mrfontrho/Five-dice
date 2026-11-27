@@ -66,7 +66,7 @@
         <div class="turn-banner" id="turnBanner"></div>
         <div class="row-gap">
           <button class="ghost small" id="undoBtn" type="button" disabled>Undo</button>
-          <button class="ghost small" id="quitBtn" type="button">End game</button>
+          <button class="ghost small" id="quitBtn" type="button" aria-label="End game">End</button>
         </div>
       </div>
 
@@ -103,19 +103,14 @@
       <!-- Scorecard tab -->
       <div id="cardPanel" role="tabpanel" aria-labelledby="subCard" hidden>
         <div class="standings" id="standings"></div>
-        <div class="panel card-top">
+        <div class="card-top">
           <div class="mini-dice" id="miniDice" aria-label="Current dice"></div>
           <div class="card-note" id="cardNote"></div>
         </div>
-        <div class="panel card-wrap">
-          <div class="card-legend" id="cardLegend" aria-hidden="true">
-            <span><span class="preview">25</span> possible score: tap to take it</span>
-            <span><span class="locked">25</span> locked in</span>
-          </div>
-          <table class="card" id="card">
-            <thead><tr><th>Category</th><th id="cardWho">Score</th></tr></thead>
-            <tbody id="cardBody"></tbody>
-          </table>
+        <div class="sheet" id="sheet">
+          <div class="col" id="colUpper" role="group" aria-label="Upper section"></div>
+          <div class="col" id="colLower" role="group" aria-label="Lower section"></div>
+          <div class="grand"><span>Total</span><b id="grandTotal">0</b></div>
         </div>
       </div>
     </section>

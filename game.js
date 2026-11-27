@@ -139,6 +139,7 @@
 
   function enterGame() {
     buildCard();
+    $("game").classList.toggle("multi", state.players.length > 1);
     $("virtualControls").classList.toggle("hidden", state.mode !== "virtual");
     $("manualControls").classList.toggle("hidden", state.mode !== "manual");
     showView("play");
@@ -238,7 +239,7 @@
   function autoFlipAfterFinalRoll() {
     if (state.mode !== "virtual" || state.rollsUsed < ROLLS_PER_TURN) return;
     const turn = `${state.round}:${state.current}`;
-    $("statusLine").textContent = "Final roll. Opening your scorecard…";
+    $("statusLine").textContent = "Final roll";
     cancelAutoFlip();
     autoFlipTimer = setTimeout(() => {
       autoFlipTimer = null;
@@ -246,7 +247,7 @@
       if (!state || state.over || state.tab !== "dice" || state.rolling) return;
       if (`${state.round}:${state.current}` !== turn || state.rollsUsed < ROLLS_PER_TURN) return;
       setTab("card");
-      const first = $("cardBody").querySelector("tr.pick");
+      const first = document.querySelector("#sheet .box.pick");
       if (first) first.focus({ preventScroll: true });
     }, AUTO_FLIP_DELAY);
   }
@@ -393,35 +394,44 @@
     $("clearDice").disabled = !state.dice.some(Boolean);
   }
 
-  function buildCard() {
-    const body = $("cardBody");
-    body.innerHTML = "";
-    const row = (label, key, cls, hint) => {
-      const first = el("td", { textContent: label });
-      if (hint) first.append(el("span", { className: "hint", textContent: hint }));
-      const cell = el("td", { className: "cell" });
-      const tr = el("tr", { className: cls || "" }, first, cell);
-      tr.dataset.key = key;
-      if (S.CATEGORIES.includes(key)) {
-        tr.addEventListener("click", () => { if (tr.classList.contains("pick")) place(key); });
-        tr.addEventListener("keydown", (e) => {
-          if ((e.key === "Enter" || e.key === " ") && tr.classList.contains("pick")) { e.preventDefault(); place(key); }
-        });
-      }
-      body.append(tr);
-    };
-    row("Upper section", "", "section");
-    S.UPPER.forEach((k) => row(S.LABELS[k], k, "", S.HINTS[k]));
-    row("Upper total", "upper", "total");
-    row(`Bonus (${S.UPPER_BONUS_THRESHOLD}+)`, "upperBonus", "total");
-    row("Lower section", "", "section");
-    S.LOWER.forEach((k) => row(S.LABELS[k], k, "", S.HINTS[k]));
-    row("Five of a Kind bonus", "fiveKindBonus", "total");
-    row("Grand total", "grand", "total grand");
+  // ---------- scorecard sheet ----------
+  // Two columns like a paper scorecard: upper section on the left, lower on the
+  // right, each ending in its bonus/subtotal rows, with the grand total below.
+  const SHORT = {
+    threeKind: "3 Kind", fourKind: "4 Kind", fullHouse: "Full House",
+    smallStraight: "Sm Straight", largeStraight: "Lg Straight", fiveKind: "5 Kind", chance: "Chance",
+  };
+
+  function faceIcon(v) {
+    const d = el("span", { className: "face-icon", ariaHidden: "true" });
+    for (let k = 0; k < 9; k++) d.append(el("span", { className: "pip" + (PIPS[v].includes(k) ? " on" : "") }));
+    return d;
   }
 
-  // The scorecard tab shows one player's card: the current player by default,
-  // or another player picked from the standings strip (read-only).
+  function buildCard() {
+    const up = $("colUpper"), low = $("colLower");
+    up.innerHTML = ""; low.innerHTML = "";
+    const box = (key, label) => {
+      const b = el("button", { type: "button", className: "box" }, el("span", { className: "box-label" }, label), el("span", { className: "box-val" }));
+      b.dataset.key = key;
+      b.addEventListener("click", () => { if (b.classList.contains("pick")) place(key); });
+      return b;
+    };
+    const sub = (key, label) => {
+      const r = el("div", { className: "sub" }, el("span", { className: "box-label", textContent: label }), el("span", { className: "box-val" }));
+      r.dataset.key = key;
+      return r;
+    };
+    S.UPPER.forEach((k, i) => up.append(box(k, faceIcon(i + 1))));
+    const sum = sub("upper", "Sum");
+    sum.append(el("span", { className: "progress" }, el("span", { className: "progress-fill" })));
+    up.append(sum, sub("upperBonus", "Bonus"));
+    S.LOWER.forEach((k) => low.append(box(k, SHORT[k])));
+    low.append(sub("fiveKindBonus", "Bonus"));
+  }
+
+  // Shows one player's card: the current player by default, or another player
+  // picked from the standings strip (read-only).
   function renderCard() {
     const pi = viewIdx();
     const p = state.players[pi];
@@ -429,56 +439,49 @@
     const live = mine && ready();
     const allowed = live ? S.allowedCategories(state.dice, p.card) : [];
     const t = S.totals(p.card, p.fiveKindBonus);
-    $("cardWho").textContent = state.players.length > 1 ? p.name : "Score";
 
-    for (const tr of $("cardBody").querySelectorAll("tr")) {
-      const key = tr.dataset.key;
-      if (!key) continue;
-      const td = tr.lastChild;
-      tr.classList.remove("pick", "zero", "just", "filled", "open");
-      tr.removeAttribute("tabindex");
-      tr.removeAttribute("role");
-      tr.removeAttribute("aria-label");
-
-      if (S.CATEGORIES.includes(key)) {
-        if (p.card[key] !== undefined) {
-          td.textContent = p.card[key];
-          tr.classList.add("filled");
-          td.setAttribute("aria-label", `${p.card[key]}, locked in`);
-        } else if (allowed.includes(key)) {
-          const v = S.scoreFor(key, state.dice, p.card);
-          td.textContent = "";
-          td.removeAttribute("aria-label");
-          td.append(el("span", { className: "preview", textContent: v }));
-          tr.classList.add("pick");
-          if (v === 0) tr.classList.add("zero");
-          tr.tabIndex = 0;
-          tr.setAttribute("role", "button");
-          tr.setAttribute("aria-label", `Score ${v} in ${S.LABELS[key]}`);
-        } else {
-          td.textContent = "";
-          td.removeAttribute("aria-label");
-          tr.classList.add("open");
-        }
-      } else if (key === "upperBonus" && !t.upperBonus) {
-        const done = S.UPPER.every((k) => p.card[k] !== undefined);
-        td.textContent = done ? 0 : `${Math.max(0, S.UPPER_BONUS_THRESHOLD - t.upper)} to go`;
+    for (const b of document.querySelectorAll("#sheet .box")) {
+      const key = b.dataset.key;
+      const val = b.querySelector(".box-val");
+      b.classList.remove("pick", "zero", "filled");
+      b.disabled = true;
+      if (p.card[key] !== undefined) {
+        val.textContent = p.card[key];
+        b.classList.add("filled");
+        b.setAttribute("aria-label", `${S.LABELS[key]}: ${p.card[key]}`);
+      } else if (allowed.includes(key)) {
+        const v = S.scoreFor(key, state.dice, p.card);
+        val.textContent = v;
+        b.classList.add("pick");
+        if (v === 0) b.classList.add("zero");
+        b.disabled = false;
+        b.setAttribute("aria-label", `Score ${v} in ${S.LABELS[key]}`);
       } else {
-        td.textContent = t[key];
+        val.textContent = "";
+        b.setAttribute("aria-label", `${S.LABELS[key]}: open`);
       }
     }
+
+    const subVal = (key) => document.querySelector(`#sheet .sub[data-key="${key}"] .box-val`);
+    subVal("upper").textContent = t.upper;
+    document.querySelector("#sheet .progress-fill").style.width = `${Math.min(100, (t.upper / S.UPPER_BONUS_THRESHOLD) * 100)}%`;
+    document.querySelector('#sheet .sub[data-key="upper"]').title = `${t.upper} of ${S.UPPER_BONUS_THRESHOLD} for the bonus`;
+    const upperDone = S.UPPER.every((k) => p.card[k] !== undefined);
+    subVal("upperBonus").textContent = t.upperBonus ? t.upperBonus : upperDone ? 0 : "";
+    subVal("fiveKindBonus").textContent = t.fiveKindBonus || (p.card.fiveKind !== undefined || state.over ? 0 : "");
+    $("grandTotal").textContent = t.grand;
 
     // Standings strip (multiplayer only): everyone's total, tap to view their card.
     const st = $("standings");
     st.innerHTML = "";
     st.classList.toggle("hidden", state.players.length < 2);
     state.players.forEach((pl, i) => {
-      const chip = el("button", { type: "button", className: "chip" },
-        el("span", { textContent: pl.name }), el("b", { textContent: S.totals(pl.card, pl.fiveKindBonus).grand }));
+      const total = S.totals(pl.card, pl.fiveKindBonus).grand;
+      const chip = el("button", { type: "button", className: "chip" }, el("span", { textContent: pl.name }), el("b", { textContent: total }));
       chip.classList.toggle("selected", i === pi);
       chip.classList.toggle("turn", i === state.current && !state.over);
       chip.setAttribute("aria-pressed", String(i === pi));
-      chip.setAttribute("aria-label", `${pl.name}: ${S.totals(pl.card, pl.fiveKindBonus).grand} points${i === state.current ? ", playing now" : ""}`);
+      chip.setAttribute("aria-label", `${pl.name}: ${total} points${i === state.current ? ", playing now" : ""}`);
       chip.addEventListener("click", () => { state.viewPlayer = i === state.current ? null : i; render(); });
       st.append(chip);
     });
@@ -503,20 +506,15 @@
       b.addEventListener("click", () => setTab("dice"));
       return b;
     };
-    if (state.over) {
-      note.append(el("span", { textContent: "Game over." }));
-    } else if (!mine) {
-      note.append(el("span", { textContent: `Viewing ${p.name}'s card. It's ${state.players[state.current].name}'s turn.` }));
-    } else if (state.rolling) {
-      note.append(el("span", { textContent: "Rolling…" }));
-    } else if (!live) {
-      note.append(el("span", { textContent: state.mode === "virtual" ? "Roll on the Dice tab to see what you can score." : "Enter your dice on the Dice tab to see what you can score." }),
-        backBtn(state.mode === "virtual" ? "Go roll" : "Enter dice"));
-    } else {
+    if (state.over) note.append(el("span", { textContent: "Game over" }));
+    else if (!mine) note.append(el("span", { textContent: `${p.name}'s card` }));
+    else if (state.rolling) note.append(el("span", { textContent: "Rolling…" }));
+    else if (!live) note.append(backBtn(state.mode === "virtual" ? "Roll" : "Enter dice"));
+    else {
       const left = ROLLS_PER_TURN - state.rollsUsed;
-      note.append(el("span", { textContent: left === 0 && state.mode === "virtual" ? "Final roll: tap a dashed box to score it." : "Tap a dashed box to score it." }));
-      if (state.mode === "virtual" && left > 0) note.append(backBtn(`Roll again (${left} left)`));
-      if (state.mode === "manual") note.append(backBtn("Change dice"));
+      if (state.mode === "virtual" && left > 0) note.append(backBtn(`Roll again · ${left}`));
+      else if (state.mode === "manual") note.append(backBtn("Edit dice"));
+      else note.append(el("span", { textContent: "Pick a box" }));
     }
   }
 
@@ -537,7 +535,7 @@
     const p = state.players[state.current];
     const multi = state.players.length > 1;
     $("turnBanner").textContent = state.over ? "Game over"
-      : `Turn ${state.round} of ${S.CATEGORIES.length}` + (multi ? ` · ${p.name}'s turn` : "");
+      : `Turn ${state.round}/${S.CATEGORIES.length}` + (multi ? ` · ${p.name}` : "");
     $("undoBtn").disabled = !state.undo || state.rolling;
 
     const isReady = !state.over && ready();
@@ -549,28 +547,25 @@
       $("rollBtn").disabled = state.over || left === 0 || state.rolling;
       $("rollBtn").textContent = state.rolling ? "Rolling…" : state.rollsUsed === 0 ? "Roll" : left === 0 ? "No rolls left" : "Roll again";
       [...$("rollPips").children].forEach((s, i) => s.classList.toggle("used", i < state.rollsUsed));
-      status = state.rolling ? "" : state.rollsUsed === 0 ? "Roll to start the turn"
-        : left === 0 ? "Out of rolls. Choose where to score."
-        : `${left} roll${left === 1 ? "" : "s"} left · tap dice to hold them`;
+      status = state.rolling || state.rollsUsed === 0 || left === 0 ? "" : "Tap dice to hold";
     } else {
       const filled = state.dice.filter(Boolean).length;
-      status = filled < 5 ? `Enter your final dice (${filled} of 5) · tap a die to change it` : "Dice entered.";
+      status = filled < 5 ? `Enter dice · ${filled}/5` : "";
     }
     $("statusLine").textContent = state.over ? "" : status;
 
     const best = isReady ? bestOption() : null;
     $("toCardBtn").classList.toggle("hidden", !best);
-    if (best) $("toCardBtn").textContent = `Open scorecard → best: ${S.LABELS[best.k]} ${best.v}`;
+    if (best) $("toCardBtn").textContent = `Best: ${SHORT[best.k] || S.LABELS[best.k]} ${best.v} →`;
 
     const t = S.totals(p.card, p.fiveKindBonus);
     const foot = $("diceFoot");
     foot.innerHTML = "";
-    foot.append(el("span", { textContent: `${multi ? p.name + ": " : "Total: "}${t.grand}` }),
-      el("span", { className: "muted", textContent: t.upperBonus ? "Upper bonus earned" : `Upper ${t.upper}/${S.UPPER_BONUS_THRESHOLD}` }));
+    foot.append(el("span", { className: "foot-total" }, el("span", { className: "muted", textContent: multi ? p.name : "Total" }), el("b", { textContent: t.grand })));
     const lp = state.lastPlaced;
     if (lp && !state.over && state.players[lp.player]) {
       foot.append(el("span", { className: "muted", textContent:
-        `Last: ${multi ? state.players[lp.player].name + " · " : ""}${S.LABELS[lp.category]} ${lp.value}${lp.bonus ? ` (+${lp.bonus} bonus)` : ""}` }));
+        `${multi ? state.players[lp.player].name + " · " : "Last · "}${SHORT[lp.category] || S.LABELS[lp.category]} ${lp.value}${lp.bonus ? ` +${lp.bonus}` : ""}` }));
     }
 
     if (!state.over && !state.rolling) store.set(SAVE_KEY, snapshotForSave());
@@ -763,7 +758,7 @@
       $(next === "dice" ? "subDice" : "subCard").focus();
     });
   }
-  $("toCardBtn").addEventListener("click", () => { setTab("card"); const first = $("cardBody").querySelector("tr.pick"); if (first) first.focus({ preventScroll: true }); });
+  $("toCardBtn").addEventListener("click", () => { setTab("card"); const first = document.querySelector("#sheet .box.pick"); if (first) first.focus({ preventScroll: true }); });
 
   // Keep profiles in sync if another tab changes them.
   window.addEventListener("storage", (e) => { if (e.key === "five-dice-profiles") { data = P.load(); if (!$("profilesView").classList.contains("hidden")) renderProfiles(); } });
