@@ -114,13 +114,29 @@
     $("gamesPlus").disabled = setupGames >= MAX_GAMES;
     const multiPlayer = $("playerRows").children.length > 1;
     const winsInput = document.querySelector('input[name="method"][value="wins"]');
-    winsInput.disabled = !multiPlayer;
-    if (!multiPlayer && winsInput.checked) document.querySelector('input[name="method"][value="points"]').checked = true;
+    const pointsInput = document.querySelector('input[name="method"][value="points"]');
+    // "Most wins" stays tappable with one player so a tap can explain why it isn't available;
+    // if they wanted it, it switches on as soon as a second player is added.
+    if (multiPlayer && wantsWins) { winsInput.checked = true; wantsWins = false; winsNotice = false; }
+    if (!multiPlayer && winsInput.checked) pointsInput.checked = true;
+    winsInput.parentElement.classList.toggle("unavailable", !multiPlayer);
     $("methodSeg").classList.toggle("hidden", setupGames === 1);
     const method = document.querySelector('input[name="method"]:checked').value;
+    const notice = winsNotice && !multiPlayer && setupGames > 1;
+    $("matchHint").classList.toggle("notice", notice);
     $("matchHint").textContent = setupGames === 1 ? "Single game"
+      : notice ? "Most wins needs at least 2 players: add a player above."
       : method === "wins" ? `Best of ${setupGames}: most games won takes the match`
       : `${setupGames} games: highest combined score takes the match`;
+  }
+  let wantsWins = false;   // tapped "Most wins" while only one player was listed
+  let winsNotice = false;  // show the "needs 2 players" explanation
+
+  function onMethodChange(e) {
+    const multiPlayer = $("playerRows").children.length > 1;
+    if (e.target.value === "wins" && !multiPlayer) { wantsWins = true; winsNotice = true; }
+    else { wantsWins = false; winsNotice = false; }
+    updateMatchControls();
   }
 
   function addPlayerRow() {
@@ -919,7 +935,7 @@
   $("confirmBtn").addEventListener("click", confirmSelection);
   $("gamesMinus").addEventListener("click", () => { setupGames = Math.max(1, setupGames - 1); updateMatchControls(); });
   $("gamesPlus").addEventListener("click", () => { setupGames = Math.min(MAX_GAMES, setupGames + 1); updateMatchControls(); });
-  for (const r of document.querySelectorAll('input[name="method"]')) r.addEventListener("change", updateMatchControls);
+  for (const r of document.querySelectorAll('input[name="method"]')) r.addEventListener("change", onMethodChange);
   $("viewStats").addEventListener("click", () => { $("endDialog").close(); state = null; showView("profiles"); });
   // Esc between games just continues the match; after the match it returns to setup.
   $("endDialog").addEventListener("cancel", () => { if (state && !state.over) return; state = null; setTimeout(() => showView("play"), 0); });
