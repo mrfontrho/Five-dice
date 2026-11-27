@@ -54,7 +54,8 @@
           <li><b>Full House</b> 25 · <b>Small Straight</b> (4 in a row) 30 · <b>Large Straight</b> 40 · <b>Five of a Kind</b> 50.</li>
           <li>Each extra Five of a Kind is worth +100 if you already scored 50 there. It also acts as a
             joker: fill the matching upper box if it's open, otherwise any lower box at full value.</li>
-          <li>Keys: <kbd>Space</kbd> roll, <kbd>1</kbd>–<kbd>5</kbd> hold dice (own dice: <kbd>1</kbd>–<kbd>6</kbd> enter a face, <kbd>Backspace</kbd> remove one).</li>
+          <li>Roll and hold on the <b>Dice</b> tab, then switch to the <b>Scorecard</b> tab: every box you can use shows what your dice would score there. Tap one to take it.</li>
+          <li>Keys: <kbd>Space</kbd> roll, <kbd>1</kbd>–<kbd>5</kbd> hold dice, <kbd>S</kbd> Scorecard tab, <kbd>D</kbd> Dice tab (own dice: <kbd>1</kbd>–<kbd>6</kbd> enter a face, <kbd>Backspace</kbd> remove one).</li>
         </ul>
       </details>
     </section>
@@ -69,26 +70,49 @@
         </div>
       </div>
 
-      <div class="panel dice-area">
-        <div class="dice" id="dice"></div>
-
-        <div class="virtual-controls" id="virtualControls">
-          <button class="primary roll" id="rollBtn" type="button">Roll</button>
-        </div>
-
-        <div class="manual-controls hidden" id="manualControls">
-          <div class="face-pad" id="facePad" aria-label="Enter a die face"></div>
-          <button class="ghost small" id="clearDice" type="button">Clear dice</button>
-        </div>
-
-        <div class="status-line" id="statusLine"></div>
+      <div class="subtabs" role="tablist" aria-label="Game view">
+        <button type="button" class="subtab active" id="subDice" role="tab" aria-selected="true" aria-controls="dicePanel">Dice</button>
+        <button type="button" class="subtab" id="subCard" role="tab" aria-selected="false" aria-controls="cardPanel" tabindex="-1">
+          Scorecard <span class="ready-dot hidden" id="readyDot" aria-hidden="true"></span>
+        </button>
       </div>
 
-      <div class="panel card-wrap">
-        <table class="card" id="card">
-          <thead><tr id="cardHead"><th>Category</th></tr></thead>
-          <tbody id="cardBody"></tbody>
-        </table>
+      <!-- Dice tab -->
+      <div id="dicePanel" role="tabpanel" aria-labelledby="subDice">
+        <div class="panel dice-area">
+          <div class="tray">
+            <div class="dice" id="dice"></div>
+          </div>
+
+          <div class="virtual-controls" id="virtualControls">
+            <button class="primary roll" id="rollBtn" type="button">Roll</button>
+            <div class="roll-pips" id="rollPips" aria-hidden="true"><span></span><span></span><span></span></div>
+          </div>
+
+          <div class="manual-controls hidden" id="manualControls">
+            <div class="face-pad" id="facePad" aria-label="Enter a die face"></div>
+            <button class="ghost small" id="clearDice" type="button">Clear dice</button>
+          </div>
+
+          <div class="status-line" id="statusLine" aria-live="polite"></div>
+          <button class="ghost to-card hidden" id="toCardBtn" type="button"></button>
+        </div>
+        <div class="dice-foot" id="diceFoot"></div>
+      </div>
+
+      <!-- Scorecard tab -->
+      <div id="cardPanel" role="tabpanel" aria-labelledby="subCard" hidden>
+        <div class="standings" id="standings"></div>
+        <div class="panel card-top">
+          <div class="mini-dice" id="miniDice" aria-label="Current dice"></div>
+          <div class="card-note" id="cardNote"></div>
+        </div>
+        <div class="panel card-wrap">
+          <table class="card" id="card">
+            <thead><tr><th>Category</th><th id="cardWho">Score</th></tr></thead>
+            <tbody id="cardBody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 

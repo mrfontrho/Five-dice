@@ -131,7 +131,7 @@
       mode,
       players: chosen.map((c) => ({ name: c.name, profileId: c.kind === "profile" ? c.id : null, card: {}, fiveKindBonus: 0 })),
       current: 0, round: 1, over: false, lastPlaced: null, undo: null,
-      dice: [], held: [], rollsUsed: 0,
+      dice: [], held: [], rollsUsed: 0, tab: "dice", viewPlayer: null,
     };
     resetTurn();
     enterGame();
@@ -142,14 +142,29 @@
     $("virtualControls").classList.toggle("hidden", state.mode !== "virtual");
     $("manualControls").classList.toggle("hidden", state.mode !== "manual");
     showView("play");
+    setTab(state.tab || "dice");
+    if (state.tab !== "card") (state.mode === "virtual" ? $("rollBtn") : $("facePad").firstChild).focus();
+  }
+
+  function setTab(tab) {
+    if (!state) return;
+    state.tab = tab;
+    const dice = tab === "dice";
+    $("dicePanel").hidden = !dice;
+    $("cardPanel").hidden = dice;
+    for (const [btn, on] of [[$("subDice"), dice], [$("subCard"), !dice]]) {
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", String(on));
+      btn.tabIndex = on ? 0 : -1;
+    }
+    if (dice) state.viewPlayer = null;
     render();
-    (state.mode === "virtual" ? $("rollBtn") : $("facePad").firstChild).focus();
   }
 
   function resumeGame() {
     const saved = store.get(SAVE_KEY);
     if (!saved) return renderSetup();
-    state = saved;
+    state = { tab: "dice", viewPlayer: null, ...saved, rolling: false };
     // A profile deleted meanwhile becomes a guest.
     for (const p of state.players) if (p.profileId && !data.profiles[p.profileId]) p.profileId = null;
     enterGame();
@@ -162,24 +177,59 @@
     state.dice = state.mode === "manual" ? [null, null, null, null, null] : [1, 1, 1, 1, 1];
   }
 
-  const ready = () => state.mode === "manual" ? state.dice.every(Boolean) : state.rollsUsed > 0;
+  const ready = () => state.mode === "manual" ? state.dice.every(Boolean) : state.rollsUsed > 0 && !state.rolling;
+  const randomFace = () => 1 + Math.floor(Math.random() * 6);
+  const viewIdx = () => (state.viewPlayer == null || state.over ? state.current : state.viewPlayer);
 
+  function setFace(dieEl, v) {
+    [...dieEl.children].forEach((pip, idx) => pip.classList.toggle("on", PIPS[v].includes(idx)));
+  }
+
+  // Roll the unheld dice: they tumble and flicker through random faces,
+  // slowing down before landing on the final values.
   function roll() {
-    if (!state || state.over || state.mode !== "virtual" || state.rollsUsed >= ROLLS_PER_TURN) return;
-    state.dice = state.dice.map((d, i) => (state.held[i] && state.rollsUsed > 0 ? d : 1 + Math.floor(Math.random() * 6)));
+    if (!state || state.over || state.mode !== "virtual" || state.rolling || state.rollsUsed >= ROLLS_PER_TURN) return;
+    const moving = state.dice.map((_, i) => !(state.held[i] && state.rollsUsed > 0));
+    const final = state.dice.map((d, i) => (moving[i] ? randomFace() : d));
     state.rollsUsed++;
+
+    const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) { state.dice = final; render(); return; }
+
+    state.rolling = true;
     render();
     const els = $("dice").children;
-    for (let i = 0; i < els.length; i++) {
-      if (state.held[i]) continue;
-      els[i].classList.remove("rolling");
+    moving.forEach((m, i) => {
+      if (!m) return;
+      els[i].classList.remove("rolling", "land");
+      els[i].style.setProperty("--spin", `${(Math.random() < 0.5 ? -1 : 1) * (300 + Math.random() * 240)}deg`);
       void els[i].offsetWidth; // restart the animation
       els[i].classList.add("rolling");
-    }
+    });
+    const start = performance.now();
+    const DURATION = 700;
+    const tick = () => {
+      const t = performance.now() - start;
+      if (t < DURATION) {
+        moving.forEach((m, i) => { if (m) setFace(els[i], randomFace()); });
+        setTimeout(tick, 55 + t / 8); // frames get slower as the dice settle
+        return;
+      }
+      state.dice = final;
+      state.rolling = false;
+      moving.forEach((m, i) => {
+        if (!m) return;
+        els[i].classList.remove("rolling");
+        els[i].classList.add("land");
+        setTimeout(() => els[i].classList.remove("land"), 300);
+      });
+      render();
+    };
+    tick();
   }
 
   function tapDie(i) {
-    if (!state || state.over) return;
+    if (!state || state.over || state.rolling) return;
     if (state.mode === "manual") {
       state.dice[i] = state.dice[i] ? (state.dice[i] % 6) + 1 : 1; // cycle 1..6
     } else {
@@ -204,18 +254,19 @@
   }
 
   function snapshot() {
-    const { undo, ...rest } = state;
+    const { undo, rolling, ...rest } = state;
     return JSON.parse(JSON.stringify(rest));
   }
 
   function place(category) {
-    if (!state || state.over || !ready()) return;
+    if (!state || state.over || !ready() || viewIdx() !== state.current) return;
     const p = state.players[state.current];
     if (!S.allowedCategories(state.dice, p.card).includes(category)) return;
     const before = snapshot();
-    p.fiveKindBonus += S.bonusFor(state.dice, p.card);
+    const bonus = S.bonusFor(state.dice, p.card);
+    p.fiveKindBonus += bonus;
     p.card[category] = S.scoreFor(category, state.dice, p.card);
-    state.lastPlaced = { player: state.current, category };
+    state.lastPlaced = { player: state.current, category, value: p.card[category], bonus };
 
     if (state.current === state.players.length - 1) {
       if (state.round === S.CATEGORIES.length) return finish();
@@ -226,13 +277,13 @@
     }
     resetTurn();
     state.undo = before;
-    render();
+    setTab("dice"); // next turn starts on the Dice tab
   }
 
   function undo() {
-    if (!state || !state.undo) return;
-    state = { ...state.undo, undo: null };
-    render();
+    if (!state || !state.undo || state.rolling) return;
+    state = { ...state.undo, undo: null, rolling: false };
+    setTab(state.tab);
   }
 
   function quit() {
@@ -298,7 +349,7 @@
   function renderDice() {
     const els = $("dice").children;
     const manual = state.mode === "manual";
-    const canHold = !manual && state.rollsUsed > 0 && state.rollsUsed < ROLLS_PER_TURN && !state.over;
+    const canHold = !manual && state.rollsUsed > 0 && state.rollsUsed < ROLLS_PER_TURN && !state.over && !state.rolling;
     for (let i = 0; i < 5; i++) {
       const d = els[i];
       const v = state.dice[i];
@@ -307,7 +358,9 @@
       d.classList.toggle("blank", blank);
       d.classList.toggle("editable", manual);
       d.disabled = manual ? state.over : !canHold;
-      [...d.children].forEach((pip, idx) => pip.classList.toggle("on", !!v && !blank && PIPS[v].includes(idx)));
+      d.classList.toggle("holdable", canHold);
+      if (!(state.rolling && d.classList.contains("rolling")))
+        [...d.children].forEach((pip, idx) => pip.classList.toggle("on", !!v && !blank && PIPS[v].includes(idx)));
       if (manual) d.setAttribute("aria-label", v ? `Die ${i + 1}: ${v}. Tap to change.` : `Die ${i + 1}: empty. Tap to set.`);
       else d.setAttribute("aria-label", blank ? `Die ${i + 1}, not rolled` : `Die ${i + 1}: ${v}${state.held[i] ? ", held" : ""}`);
       if (manual) d.removeAttribute("aria-pressed"); else d.setAttribute("aria-pressed", String(state.held[i]));
@@ -317,28 +370,20 @@
   }
 
   function buildCard() {
-    const head = $("cardHead");
-    head.innerHTML = "<th>Category</th>";
-    for (const p of state.players) head.append(el("th", { textContent: p.name }));
-
     const body = $("cardBody");
     body.innerHTML = "";
     const row = (label, key, cls, hint) => {
       const first = el("td", { textContent: label });
       if (hint) first.append(el("span", { className: "hint", textContent: hint }));
-      const tr = el("tr", { className: cls || "" }, first);
-      state.players.forEach((_, pi) => {
-        const c = el("td", { className: "cell" });
-        c.dataset.key = key;
-        c.dataset.player = pi;
-        if (S.CATEGORIES.includes(key)) {
-          c.addEventListener("click", () => { if (pi === state.current) place(key); });
-          c.addEventListener("keydown", (e) => {
-            if ((e.key === "Enter" || e.key === " ") && pi === state.current) { e.preventDefault(); place(key); }
-          });
-        }
-        tr.append(c);
-      });
+      const cell = el("td", { className: "cell" });
+      const tr = el("tr", { className: cls || "" }, first, cell);
+      tr.dataset.key = key;
+      if (S.CATEGORIES.includes(key)) {
+        tr.addEventListener("click", () => { if (tr.classList.contains("pick")) place(key); });
+        tr.addEventListener("keydown", (e) => {
+          if ((e.key === "Enter" || e.key === " ") && tr.classList.contains("pick")) { e.preventDefault(); place(key); }
+        });
+      }
       body.append(tr);
     };
     row("Upper section", "", "section");
@@ -351,48 +396,112 @@
     row("Grand total", "grand", "total grand");
   }
 
+  // The scorecard tab shows one player's card: the current player by default,
+  // or another player picked from the standings strip (read-only).
   function renderCard() {
-    const heads = $("cardHead").children;
-    state.players.forEach((_, pi) => heads[pi + 1].classList.toggle("active", pi === state.current && !state.over));
+    const pi = viewIdx();
+    const p = state.players[pi];
+    const mine = pi === state.current && !state.over;
+    const live = mine && ready();
+    const allowed = live ? S.allowedCategories(state.dice, p.card) : [];
+    const t = S.totals(p.card, p.fiveKindBonus);
+    $("cardWho").textContent = state.players.length > 1 ? p.name : "Score";
 
-    for (const td of $("cardBody").querySelectorAll("td.cell")) {
-      const key = td.dataset.key;
+    for (const tr of $("cardBody").querySelectorAll("tr")) {
+      const key = tr.dataset.key;
       if (!key) continue;
-      const pi = Number(td.dataset.player);
-      const p = state.players[pi];
-      td.classList.remove("pick", "zero", "just", "turn");
-      td.removeAttribute("tabindex");
-      td.removeAttribute("role");
-      td.removeAttribute("aria-label");
-      td.classList.toggle("turn", pi === state.current && !state.over);
+      const td = tr.lastChild;
+      tr.classList.remove("pick", "zero", "just", "filled", "open");
+      tr.removeAttribute("tabindex");
+      tr.removeAttribute("role");
+      tr.removeAttribute("aria-label");
 
       if (S.CATEGORIES.includes(key)) {
         if (p.card[key] !== undefined) {
           td.textContent = p.card[key];
+          tr.classList.add("filled");
           const lp = state.lastPlaced;
-          if (lp && lp.player === pi && lp.category === key) td.classList.add("just");
-        } else if (pi === state.current && !state.over && ready() && S.allowedCategories(state.dice, p.card).includes(key)) {
+          if (lp && lp.player === pi && lp.category === key && state.tab === "card") tr.classList.add("just");
+        } else if (allowed.includes(key)) {
           const v = S.scoreFor(key, state.dice, p.card);
           td.textContent = v;
-          td.classList.add("pick");
-          if (v === 0) td.classList.add("zero");
-          td.tabIndex = 0;
-          td.setAttribute("role", "button");
-          td.setAttribute("aria-label", `Score ${v} in ${S.LABELS[key]}`);
+          tr.classList.add("pick");
+          if (v === 0) tr.classList.add("zero");
+          tr.tabIndex = 0;
+          tr.setAttribute("role", "button");
+          tr.setAttribute("aria-label", `Score ${v} in ${S.LABELS[key]}`);
         } else {
           td.textContent = "";
+          tr.classList.add("open");
         }
+      } else if (key === "upperBonus" && !t.upperBonus) {
+        const done = S.UPPER.every((k) => p.card[k] !== undefined);
+        td.textContent = done ? 0 : `${Math.max(0, S.UPPER_BONUS_THRESHOLD - t.upper)} to go`;
       } else {
-        const t = S.totals(p.card, p.fiveKindBonus);
-        const v = t[key];
-        if (key === "upperBonus" && !v) {
-          const done = S.UPPER.every((k) => p.card[k] !== undefined);
-          td.textContent = done ? 0 : `${Math.max(0, S.UPPER_BONUS_THRESHOLD - t.upper)} to go`;
-        } else {
-          td.textContent = v;
-        }
+        td.textContent = t[key];
       }
     }
+
+    // Standings strip (multiplayer only): everyone's total, tap to view their card.
+    const st = $("standings");
+    st.innerHTML = "";
+    st.classList.toggle("hidden", state.players.length < 2);
+    state.players.forEach((pl, i) => {
+      const chip = el("button", { type: "button", className: "chip" },
+        el("span", { textContent: pl.name }), el("b", { textContent: S.totals(pl.card, pl.fiveKindBonus).grand }));
+      chip.classList.toggle("selected", i === pi);
+      chip.classList.toggle("turn", i === state.current && !state.over);
+      chip.setAttribute("aria-pressed", String(i === pi));
+      chip.setAttribute("aria-label", `${pl.name}: ${S.totals(pl.card, pl.fiveKindBonus).grand} points${i === state.current ? ", playing now" : ""}`);
+      chip.addEventListener("click", () => { state.viewPlayer = i === state.current ? null : i; render(); });
+      st.append(chip);
+    });
+
+    // Current dice, so you can see what you're scoring without switching tabs.
+    const mini = $("miniDice");
+    mini.innerHTML = "";
+    const showDice = state.mode === "manual" ? state.dice.some(Boolean) : state.rollsUsed > 0;
+    state.dice.forEach((v, i) => {
+      const d = el("span", { className: "mini-die" });
+      for (let k = 0; k < 9; k++) d.append(el("span", { className: "pip" + (showDice && v && PIPS[v].includes(k) ? " on" : "") }));
+      d.classList.toggle("blank", !showDice || !v);
+      d.classList.toggle("held", state.mode === "virtual" && state.held[i] && showDice);
+      mini.append(d);
+    });
+    mini.setAttribute("aria-label", showDice ? `Current dice: ${state.dice.map((v) => v || "empty").join(", ")}` : "Not rolled yet");
+
+    const note = $("cardNote");
+    note.innerHTML = "";
+    const backBtn = (label) => {
+      const b = el("button", { type: "button", className: "ghost small", textContent: label });
+      b.addEventListener("click", () => setTab("dice"));
+      return b;
+    };
+    if (state.over) {
+      note.append(el("span", { textContent: "Game over." }));
+    } else if (!mine) {
+      note.append(el("span", { textContent: `Viewing ${p.name}'s card. It's ${state.players[state.current].name}'s turn.` }));
+    } else if (state.rolling) {
+      note.append(el("span", { textContent: "Rolling…" }));
+    } else if (!live) {
+      note.append(el("span", { textContent: state.mode === "virtual" ? "Roll on the Dice tab to see what you can score." : "Enter your dice on the Dice tab to see what you can score." }),
+        backBtn(state.mode === "virtual" ? "Go roll" : "Enter dice"));
+    } else {
+      const left = ROLLS_PER_TURN - state.rollsUsed;
+      note.append(el("span", { textContent: "Tap a box to score it." }));
+      if (state.mode === "virtual" && left > 0) note.append(backBtn(`Roll again (${left} left)`));
+      if (state.mode === "manual") note.append(backBtn("Change dice"));
+    }
+  }
+
+  function bestOption() {
+    const p = state.players[state.current];
+    let best = null;
+    for (const k of S.allowedCategories(state.dice, p.card)) {
+      const v = S.scoreFor(k, state.dice, p.card);
+      if (!best || v > best.v) best = { k, v };
+    }
+    return best;
   }
 
   function render() {
@@ -403,27 +512,45 @@
     const multi = state.players.length > 1;
     $("turnBanner").textContent = state.over ? "Game over"
       : `Turn ${state.round} of ${S.CATEGORIES.length}` + (multi ? ` · ${p.name}'s turn` : "");
-    $("undoBtn").disabled = !state.undo;
+    $("undoBtn").disabled = !state.undo || state.rolling;
+
+    const isReady = !state.over && ready();
+    $("readyDot").classList.toggle("hidden", !(isReady && state.tab === "dice"));
 
     let status;
     if (state.mode === "virtual") {
       const left = ROLLS_PER_TURN - state.rollsUsed;
-      $("rollBtn").disabled = state.over || left === 0;
-      $("rollBtn").textContent = state.rollsUsed === 0 ? "Roll" : left === 0 ? "No rolls left" : "Roll again";
-      status = state.rollsUsed === 0 ? "Roll to start the turn"
-        : left === 0 ? "Pick a box on the scorecard"
-        : `${left} roll${left === 1 ? "" : "s"} left · tap dice to hold · or pick a box`;
+      $("rollBtn").disabled = state.over || left === 0 || state.rolling;
+      $("rollBtn").textContent = state.rolling ? "Rolling…" : state.rollsUsed === 0 ? "Roll" : left === 0 ? "No rolls left" : "Roll again";
+      [...$("rollPips").children].forEach((s, i) => s.classList.toggle("used", i < state.rollsUsed));
+      status = state.rolling ? "" : state.rollsUsed === 0 ? "Roll to start the turn"
+        : left === 0 ? "Out of rolls. Choose where to score."
+        : `${left} roll${left === 1 ? "" : "s"} left · tap dice to hold them`;
     } else {
       const filled = state.dice.filter(Boolean).length;
-      status = filled < 5 ? `Enter your final dice (${filled} of 5) · tap a die to change it`
-        : "Now pick a box on the scorecard";
+      status = filled < 5 ? `Enter your final dice (${filled} of 5) · tap a die to change it` : "Dice entered.";
     }
     $("statusLine").textContent = state.over ? "" : status;
 
-    if (!state.over) store.set(SAVE_KEY, snapshotForSave());
+    const best = isReady ? bestOption() : null;
+    $("toCardBtn").classList.toggle("hidden", !best);
+    if (best) $("toCardBtn").textContent = `Open scorecard → best: ${S.LABELS[best.k]} ${best.v}`;
+
+    const t = S.totals(p.card, p.fiveKindBonus);
+    const foot = $("diceFoot");
+    foot.innerHTML = "";
+    foot.append(el("span", { textContent: `${multi ? p.name + ": " : "Total: "}${t.grand}` }),
+      el("span", { className: "muted", textContent: t.upperBonus ? "Upper bonus earned" : `Upper ${t.upper}/${S.UPPER_BONUS_THRESHOLD}` }));
+    const lp = state.lastPlaced;
+    if (lp && !state.over && state.players[lp.player]) {
+      foot.append(el("span", { className: "muted", textContent:
+        `Last: ${multi ? state.players[lp.player].name + " · " : ""}${S.LABELS[lp.category]} ${lp.value}${lp.bonus ? ` (+${lp.bonus} bonus)` : ""}` }));
+    }
+
+    if (!state.over && !state.rolling) store.set(SAVE_KEY, snapshotForSave());
   }
 
-  function snapshotForSave() { return { ...state }; }
+  function snapshotForSave() { const { rolling, ...rest } = state; return rest; }
 
   // ---------- profiles view ----------
   const pct = (x) => `${Math.round(x * 100)}%`;
@@ -582,16 +709,35 @@
   document.addEventListener("keydown", (e) => {
     if (!state || state.over || $("game").classList.contains("hidden") || $("endDialog").open) return;
     if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
-    const onPick = e.target.classList && e.target.classList.contains("pick");
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "s") return setTab("card");
+    if (k === "d") return setTab("dice");
+    if (state.tab !== "dice") return; // roll/hold/enter keys only act on the Dice tab
     if (state.mode === "virtual") {
-      if (e.code === "Space" && !onPick) { e.preventDefault(); roll(); }
+      if (e.code === "Space" && e.target.tagName !== "BUTTON") { e.preventDefault(); roll(); }
+      else if (e.code === "Space" && e.target === $("rollBtn")) { e.preventDefault(); roll(); }
       else if (/^[1-5]$/.test(e.key)) tapDie(Number(e.key) - 1);
     } else {
       if (/^[1-6]$/.test(e.key)) enterFace(Number(e.key));
       else if (e.key === "Backspace") { e.preventDefault(); removeLastFace(); }
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); }
   });
+
+  // Tabs: click, or arrow keys while a tab has focus.
+  $("subDice").addEventListener("click", () => setTab("dice"));
+  $("subCard").addEventListener("click", () => setTab("card"));
+  for (const t of [$("subDice"), $("subCard")]) {
+    t.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const next = state.tab === "dice" ? "card" : "dice";
+      setTab(next);
+      $(next === "dice" ? "subDice" : "subCard").focus();
+    });
+  }
+  $("toCardBtn").addEventListener("click", () => { setTab("card"); const first = $("cardBody").querySelector("tr.pick"); if (first) first.focus({ preventScroll: true }); });
 
   // Keep profiles in sync if another tab changes them.
   window.addEventListener("storage", (e) => { if (e.key === "five-dice-profiles") { data = P.load(); if (!$("profilesView").classList.contains("hidden")) renderProfiles(); } });

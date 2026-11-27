@@ -68,7 +68,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .wide { width: 100%; padding: 13px; font-size: 1.05rem; }
 .danger { color: var(--danger); }
 .icon { padding: 8px 12px; }
-button:focus-visible, .button-like:focus-within, select:focus-visible, input:focus-visible, td.pick:focus-visible {
+button:focus-visible, .button-like:focus-within, select:focus-visible, input:focus-visible, tr.pick:focus-visible {
   outline: 3px solid var(--held); outline-offset: 2px;
 }
 input[type="text"], select {
@@ -117,12 +117,23 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-si
 .die.blank { opacity: 0.35; }
 .die.editable { cursor: pointer; }
 .die.editable.blank { border-style: dashed; opacity: 0.6; }
-.die.rolling { animation: shake 0.35s ease; }
+.die.rolling { animation: tumble 0.7s cubic-bezier(.2,.7,.3,1); }
+.die.land { animation: land 0.3s ease-out; }
+.die.holdable { cursor: pointer; }
 .pip { width: 10px; height: 10px; border-radius: 50%; background: var(--pip); place-self: center; visibility: hidden; }
 .pip.on { visibility: visible; }
-@keyframes shake {
-  0% { transform: rotate(0); } 25% { transform: rotate(-14deg) scale(0.95); }
-  50% { transform: rotate(12deg); } 75% { transform: rotate(-6deg); } 100% { transform: rotate(0); }
+@keyframes tumble {
+  0%   { transform: translateY(0) rotate(0) scale(1); }
+  20%  { transform: translateY(-34px) rotate(calc(var(--spin, 360deg) * 0.35)) scale(0.92); }
+  45%  { transform: translateY(0) rotate(calc(var(--spin, 360deg) * 0.7)) scale(1.04); }
+  65%  { transform: translateY(-12px) rotate(calc(var(--spin, 360deg) * 0.9)) scale(0.97); }
+  100% { transform: translateY(0) rotate(var(--spin, 360deg)) scale(1); }
+}
+@keyframes land {
+  0% { transform: scale(1.12); } 60% { transform: scale(0.96); } 100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .die.rolling, .die.land, .card tr.just { animation: none; }
 }
 .roll { min-width: 160px; font-size: 1.05rem; }
 .manual-controls { display: grid; justify-items: center; gap: 10px; }
@@ -136,17 +147,21 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-si
 .card th, .card td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
 .card th:first-child, .card td:first-child { text-align: left; white-space: normal; }
 .card thead th { font-weight: 600; }
-.card thead th.active { color: var(--accent); }
 .card .hint { display: block; color: var(--muted); font-size: 0.78rem; }
 .card tr.section td { background: var(--bg); font-weight: 600; }
 .card tr.total td { font-weight: 700; }
 .card tr.grand td { font-size: 1.05rem; }
 .card td.cell { min-width: 64px; font-variant-numeric: tabular-nums; }
-.card td.turn { background: var(--turn); }
-.card td.pick { cursor: pointer; color: var(--preview); font-weight: 600; }
-.card td.pick.zero { color: var(--zero); }
-.card td.pick:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
-.card td.just { animation: flash 0.8s ease; }
+.card tr.pick { cursor: pointer; }
+.card tr.pick td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.card tr.pick td.cell { color: var(--preview); font-weight: 700; font-size: 1.05rem; }
+.card tr.pick.zero td { background: transparent; }
+.card tr.pick.zero td.cell { color: var(--zero); }
+.card tr.pick:hover td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.card tr.pick:focus-visible { outline-offset: -3px; }
+.card tr.filled td.cell { font-weight: 600; }
+.card tr.open td.cell::after { content: "–"; color: var(--line); }
+.card tr.just td { animation: flash 0.8s ease; }
 @keyframes flash { from { background: color-mix(in srgb, var(--held) 50%, transparent); } to { background: transparent; } }
 
 /* ---------- profiles ---------- */
@@ -197,4 +212,61 @@ dialog h2 { margin-top: 0; font-size: 1.3rem; }
   .pip { width: 8px; height: 8px; }
   .card th, .card td { padding: 7px 6px; }
   .panel { padding: 14px; }
+}
+
+/* ---------- in-game tabs ---------- */
+.subtabs {
+  position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; margin-bottom: 12px;
+  box-shadow: 0 4px 10px -8px rgba(0,0,0,0.3);
+}
+.subtab { background: transparent; color: var(--muted); padding: 10px; border-radius: 9px; font-weight: 600; position: relative; }
+.subtab.active { background: var(--bg); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.ready-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--held);
+  margin-left: 4px; vertical-align: middle; animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse { 50% { transform: scale(1.4); opacity: 0.6; } }
+
+.tray {
+  width: 100%; padding: 26px 8px 18px; border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+}
+.dice-area .die { width: 62px; height: 62px; padding: 8px; }
+.dice-area .die .pip { width: 11px; height: 11px; }
+.virtual-controls { display: grid; justify-items: center; gap: 8px; }
+.roll-pips { display: flex; gap: 6px; }
+.roll-pips span { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.roll-pips span.used { background: var(--line); }
+.to-card { border-color: var(--accent); color: var(--text); font-weight: 600; }
+.dice-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; margin-top: 10px; font-size: 0.92rem; }
+
+.standings { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 10px; padding-bottom: 2px; }
+.chip {
+  display: flex; gap: 6px; align-items: baseline; white-space: nowrap; padding: 7px 12px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 0.9rem;
+}
+.chip.turn { border-color: var(--accent); }
+.chip.turn::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); align-self: center; }
+.chip.selected { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.chip.selected.turn::before { background: var(--accent-text); }
+
+.card-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 10px; padding: 12px 14px; }
+.mini-dice { display: flex; gap: 5px; }
+.mini-die {
+  width: 30px; height: 30px; padding: 4px; border-radius: 7px; background: var(--die); border: 1.5px solid var(--line);
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+}
+.mini-die .pip { width: 5px; height: 5px; }
+.mini-die.held { border-color: var(--held); box-shadow: 0 0 0 2px var(--held); }
+.mini-die.blank { opacity: 0.35; }
+.card-note { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 0.9rem; flex: 1 1 200px; justify-content: flex-end; text-align: right; }
+.card td.cell { width: 30%; }
+
+@media (max-width: 420px) {
+  .dice-area .die { width: 52px; height: 52px; padding: 7px; }
+  .dice-area .die .pip { width: 9px; height: 9px; }
+  .tray { padding: 22px 4px 14px; }
+  .card-note { justify-content: flex-start; text-align: left; }
 }

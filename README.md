@@ -8,16 +8,24 @@ saved player profiles with performance stats. Plain HTML/CSS/JS: no build step, 
 Open `index.html` in any modern browser (double-click it, or serve the folder with
 `python3 -m http.server` and visit http://localhost:8000).
 
-### Two ways to play
+### Dice tab and Scorecard tab
 
-- **Roll in the app:** tap **Roll** (or press `Space`), tap dice to hold them (or press `1`–`5`),
-  up to three rolls per turn.
-- **Use my own dice:** roll real dice at the table, then tap the face buttons (or press `1`–`6`)
-  to enter what you got. Tap a die to change it; `Backspace` removes the last one.
+During a game you switch between two tabs (tap them, or press `D` / `S`):
 
-Either way, the scorecard shows what every open box would score. Tap one to lock it in.
+- **Dice:** roll (button or `Space`) and watch the unheld dice tumble and land. Tap dice
+  (or press `1`–`5`) to hold them between rolls; you get up to three rolls per turn. Once you've
+  rolled, a dot appears on the Scorecard tab and a shortcut shows your best-scoring option.
+- **Scorecard:** the current player's card. Every box you're allowed to use shows what your
+  current dice would score there (zeros in orange). Tap one to score it, and the next turn
+  starts back on the Dice tab. The dice you're scoring are shown at the top. In multiplayer, a
+  strip of everyone's totals lets you look at another player's card.
+
+**Use my own dice** mode works the same way, except the Dice tab has face buttons (or keys
+`1`–`6`) to enter what you rolled on real dice. Tap a die to change it; `Backspace` removes
+the last one.
+
 Totals, the upper bonus (+35 at 63), the Five of a Kind bonus (+100) and joker rules are all
-handled for you. **Undo** takes back the last box you scored. A game in progress is saved
+handled for you. **Undo** takes back the last box scored. A game in progress is saved
 automatically, so you can close the page and resume later.
 
 ### Profiles and stats
