@@ -968,4 +968,9 @@
   window.addEventListener("storage", (e) => { if (e.key === "five-dice-profiles") { data = P.load(); if (!$("profilesView").classList.contains("hidden")) renderProfiles(); if (!$("hofView").classList.contains("hidden")) renderHof(); } });
 
   showView("play");
+
+  // Offline support: only over http(s) (not when opened as a local file).
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
 })();
