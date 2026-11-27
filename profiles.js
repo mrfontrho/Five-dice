@@ -125,7 +125,47 @@
     return { added, updated };
   }
 
-  const api = { load, save, empty, createProfile, renameProfile, deleteProfile, list, recordGame, stats, merge, nameTaken };
+  // ---------- Hall of Fame ----------
+  // Minimum games before a player is ranked on the average and win % boards,
+  // so one lucky game can't top the table.
+  const HOF_MIN_GAMES = 3;
+
+  // Sort by value (then tie-break) and assign competition ranks: 1, 1, 3, ...
+  function rank(entries) {
+    entries.sort((a, b) => b.value - a.value || b.tiebreak - a.tiebreak || a.name.localeCompare(b.name));
+    entries.forEach((e, i) => {
+      e.rank = i > 0 && e.value === entries[i - 1].value ? entries[i - 1].rank : i + 1;
+    });
+    return entries;
+  }
+
+  // Returns an array of leaderboards. Each board:
+  //   { id, title, min (games needed, 0 if none), entries: [{ id, name, value, rank, ... }], unranked: [{ name, have }] }
+  function hallOfFame(data, minGames = HOF_MIN_GAMES) {
+    const rows = list(data).map((p) => ({ p, s: stats(p) })).filter((r) => r.s.games > 0);
+    const board = (id, title, min, eligible, enough, toEntry, have) => ({
+      id, title, min,
+      entries: rank(rows.filter((r) => eligible(r) && enough(r)).map((r) => ({ id: r.p.id, name: r.p.name, ...toEntry(r) }))),
+      unranked: rows.filter((r) => eligible(r) && !enough(r)).map((r) => ({ name: r.p.name, have: have(r) })),
+    });
+    const all = () => true;
+    const multi = (r) => r.s.multiGames > 0;
+
+    return [
+      board("best", "Best game", 0, all, all, (r) => {
+        const g = r.p.games.filter((x) => x.score === r.s.best).sort((a, b) => a.date.localeCompare(b.date))[0];
+        return { value: r.s.best, tiebreak: r.s.average, date: g ? g.date : null };
+      }),
+      board("wins", "Most wins", 0, multi, all, (r) => (
+        { value: r.s.wins, tiebreak: r.s.winRate, wins: r.s.wins, played: r.s.multiGames })),
+      board("average", "Average", minGames, all, (r) => r.s.games >= minGames,
+        (r) => ({ value: r.s.average, tiebreak: r.s.games, games: r.s.games }), (r) => r.s.games),
+      board("winRate", "Win %", minGames, multi, (r) => r.s.multiGames >= minGames,
+        (r) => ({ value: r.s.winRate, tiebreak: r.s.wins, wins: r.s.wins, played: r.s.multiGames }), (r) => r.s.multiGames),
+    ];
+  }
+
+  const api = { load, save, empty, createProfile, renameProfile, deleteProfile, list, recordGame, stats, merge, nameTaken, hallOfFame, HOF_MIN_GAMES };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Profiles = api;
 })(typeof window !== "undefined" ? window : globalThis);

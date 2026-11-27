@@ -288,6 +288,26 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-si
 .recent li { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .backup p { margin: 0 0 10px; font-size: 0.88rem; }
 
+/* ---------- hall of fame ---------- */
+.hof { display: grid; gap: 12px; }
+.hof-seg span { padding: 8px 6px; }
+.hof-board { padding: 6px 16px; }
+.hof-list { list-style: none; margin: 0; padding: 0; }
+.hof-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.hof-row:last-child { border-bottom: 0; }
+.hof-rank {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 0.82rem; font-weight: 600; color: var(--muted); background: var(--soft); font-variant-numeric: tabular-nums;
+}
+.hof-row.leader .hof-rank { background: var(--accent); color: var(--accent-text); }
+.hof-who { display: grid; min-width: 0; }
+.hof-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hof-detail { color: var(--muted); font-size: 0.8rem; }
+.hof-value { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hof-row.leader .hof-value { color: var(--accent); }
+.hof-empty { padding: 18px 0; text-align: center; font-size: 0.92rem; }
+.hof-foot { font-size: 0.8rem; margin: 0; padding: 10px 0 8px; border-top: 1px solid var(--line); }
+
 /* ---------- end dialog ---------- */
 dialog {
   border: 0; border-radius: var(--radius); background: var(--surface); color: var(--text);
@@ -308,6 +328,8 @@ dialog h2 { margin-top: 0; font-size: 1.2rem; text-transform: none; letter-spaci
 
 @media (max-width: 400px) {
   .app { padding: 10px 12px 16px; }
+  .top h1 { font-size: 1rem; }
+  .tab { padding: 6px 7px; font-size: 0.92rem; }
   .die { width: 52px; height: 52px; padding: 7px; }
   .pip { width: 9px; height: 9px; }
   .box, .sub { padding: 0 9px; font-size: 0.86rem; }
@@ -315,6 +337,11 @@ dialog h2 { margin-top: 0; font-size: 1.2rem; text-transform: none; letter-spaci
 }
 
 /* Short screens: tighten the chrome so the scorecard still fits. */
+@media (max-width: 350px) {
+  .top h1 { display: none; }
+  .top { justify-content: flex-end; }
+}
+
 @media (max-height: 620px) {
   .top { height: 30px; margin-bottom: 2px; }
   .app { padding-top: 6px; }

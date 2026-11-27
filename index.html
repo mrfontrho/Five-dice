@@ -13,6 +13,7 @@
       <nav class="tabs" aria-label="Sections">
         <button type="button" class="tab active" id="tabPlay" aria-pressed="true">Play</button>
         <button type="button" class="tab" id="tabProfiles" aria-pressed="false">Profiles</button>
+        <button type="button" class="tab" id="tabHof" aria-pressed="false">Hall of Fame</button>
       </nav>
     </header>
 
@@ -154,6 +155,20 @@
           <label class="ghost button-like">Import<input type="file" id="importFile" accept="application/json,.json" hidden></label>
         </div>
         <p class="muted" id="backupMsg" role="status"></p>
+      </div>
+    </section>
+
+    <!-- ===== Hall of Fame ===== -->
+    <section class="hof hidden" id="hofView">
+      <div class="seg hof-seg" id="hofSeg" role="radiogroup" aria-label="Leaderboard">
+        <label><input type="radio" name="hof" value="best" checked><span>Best game</span></label>
+        <label><input type="radio" name="hof" value="wins"><span>Wins</span></label>
+        <label><input type="radio" name="hof" value="average"><span>Average</span></label>
+        <label><input type="radio" name="hof" value="winRate"><span>Win %</span></label>
+      </div>
+      <div class="panel hof-board">
+        <ol class="hof-list" id="hofList"></ol>
+        <p class="hof-foot muted" id="hofFoot"></p>
       </div>
     </section>
 

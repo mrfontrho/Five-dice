@@ -37,11 +37,13 @@
     $("setup").classList.toggle("hidden", name !== "play" || playing);
     $("game").classList.toggle("hidden", name !== "play" || !playing);
     $("profilesView").classList.toggle("hidden", name !== "profiles");
-    $("tabPlay").classList.toggle("active", name === "play");
-    $("tabProfiles").classList.toggle("active", name === "profiles");
-    $("tabPlay").setAttribute("aria-pressed", String(name === "play"));
-    $("tabProfiles").setAttribute("aria-pressed", String(name === "profiles"));
+    $("hofView").classList.toggle("hidden", name !== "hof");
+    for (const [id, v] of [["tabPlay", "play"], ["tabProfiles", "profiles"], ["tabHof", "hof"]]) {
+      $(id).classList.toggle("active", name === v);
+      $(id).setAttribute("aria-pressed", String(name === v));
+    }
     if (name === "profiles") renderProfiles();
+    if (name === "hof") renderHof();
     if (name === "play" && !playing) renderSetup();
   }
 
@@ -828,6 +830,56 @@
     for (const p of all) box.append(profileCard(p));
   }
 
+  // ---------- hall of fame ----------
+  const HOF_KEY = "five-dice-hof-board";
+  const HOF_EMPTY = {
+    best: "Finish a game with a saved profile to get on the board.",
+    wins: "Win a game against another player to get on the board.",
+    average: "Play a few games with a saved profile to get on the board.",
+    winRate: "Play a few games against other players to get on the board.",
+  };
+
+  function hofValue(b, e) {
+    if (b.id === "average") return fmt1(e.value);
+    if (b.id === "winRate") return pct(e.value);
+    return String(e.value);
+  }
+
+  function hofDetail(b, e) {
+    if (b.id === "best") return e.date ? dateStr(e.date) : "";
+    if (b.id === "wins") return `of ${e.played} game${e.played === 1 ? "" : "s"}`;
+    if (b.id === "average") return `${e.games} games`;
+    return `${e.wins}–${e.played - e.wins}`;
+  }
+
+  function renderHof() {
+    const boards = P.hallOfFame(data);
+    let id = store.get(HOF_KEY);
+    if (!boards.some((b) => b.id === id)) id = "best";
+    document.querySelector(`input[name="hof"][value="${id}"]`).checked = true;
+    const b = boards.find((x) => x.id === id);
+
+    const list = $("hofList");
+    list.innerHTML = "";
+    list.setAttribute("aria-label", b.title);
+    for (const e of b.entries) {
+      const li = el("li", { className: "hof-row" + (e.rank === 1 ? " leader" : "") },
+        el("span", { className: "hof-rank", textContent: e.rank }),
+        el("span", { className: "hof-who" },
+          el("span", { className: "hof-name", textContent: e.name }),
+          el("span", { className: "hof-detail", textContent: hofDetail(b, e) })),
+        el("span", { className: "hof-value", textContent: hofValue(b, e) }));
+      list.append(li);
+    }
+    if (!b.entries.length) list.append(el("li", { className: "hof-empty muted", textContent: HOF_EMPTY[b.id] }));
+
+    const foot = [];
+    if (b.min) foot.push(`Ranked after ${b.min}+ ${b.id === "winRate" ? "multiplayer " : ""}games.`);
+    if (b.unranked.length) foot.push(`Not yet ranked: ${b.unranked.map((u) => `${u.name} (${u.have})`).join(", ")}.`);
+    $("hofFoot").textContent = foot.join(" ");
+    $("hofFoot").classList.toggle("hidden", !foot.length);
+  }
+
   function exportProfiles() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = el("a", { href: URL.createObjectURL(blob), download: `five-dice-profiles-${new Date().toISOString().slice(0, 10)}.json` });
@@ -851,6 +903,9 @@
   buildDice();
   $("tabPlay").addEventListener("click", () => showView("play"));
   $("tabProfiles").addEventListener("click", () => showView("profiles"));
+  $("tabHof").addEventListener("click", () => showView("hof"));
+  for (const r of document.querySelectorAll('input[name="hof"]'))
+    r.addEventListener("change", () => { store.set(HOF_KEY, r.value); renderHof(); });
   $("addPlayer").addEventListener("click", addPlayerRow);
   $("startBtn").addEventListener("click", startGame);
   $("resumeBtn").addEventListener("click", resumeGame);
@@ -910,7 +965,7 @@
   $("toCardBtn").addEventListener("click", () => { setTab("card"); const first = document.querySelector("#sheet .box.pick"); if (first) first.focus({ preventScroll: true }); });
 
   // Keep profiles in sync if another tab changes them.
-  window.addEventListener("storage", (e) => { if (e.key === "five-dice-profiles") { data = P.load(); if (!$("profilesView").classList.contains("hidden")) renderProfiles(); } });
+  window.addEventListener("storage", (e) => { if (e.key === "five-dice-profiles") { data = P.load(); if (!$("profilesView").classList.contains("hidden")) renderProfiles(); if (!$("hofView").classList.contains("hidden")) renderHof(); } });
 
   showView("play");
 })();

@@ -59,6 +59,20 @@ as a guest). Finished games are recorded, and the **Profiles** tab shows for eac
 - per-category averages and how often each box gets scratched (scored as 0)
 - recent game history
 
+### Hall of Fame
+
+The **Hall of Fame** tab ranks every saved profile on four boards:
+
+| Board | Ranked by | Shown with |
+| --- | --- | --- |
+| Best game | each player's highest single-game score | date of that game |
+| Wins | total multiplayer games won | games played |
+| Average | average score per game (needs 3+ games) | games played |
+| Win % | share of multiplayer games won (needs 3+ multiplayer games) | win–loss record |
+
+Equal values share a rank. Players below the minimum are listed under the board as not yet
+ranked. Guest games don't count.
+
 Profiles are stored in the browser (`localStorage`), so they stay on that device. Use
 **Export** / **Import** on the Profiles tab to back them up or move them to another device.
 
