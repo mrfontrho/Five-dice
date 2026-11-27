@@ -66,6 +66,19 @@ h2:first-child { margin-top: 0; }
   padding: 6px 11px; border-radius: 999px; animation: pop-in 0.3s ease-out;
 }
 .update-btn.hidden { display: none; }
+.tab { white-space: nowrap; }
+@media (max-width: 440px) {
+  .update-long { display: none; }
+  .top.has-update .tabs { gap: 0; }
+  .top.has-update .tab { padding-left: 6px; padding-right: 6px; }
+  .top.has-update .share-btn { margin-left: 0; }
+}
+/* Very narrow: the pill shrinks to its refresh icon. */
+@media (max-width: 360px) {
+  .update-text { display: none; }
+  .update-btn { padding: 8px; }
+  .update-btn svg { width: 16px; height: 16px; }
+}
 .top.has-update h1 { display: none; }
 .top.has-update { justify-content: space-between; }
 @keyframes pop-in { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
