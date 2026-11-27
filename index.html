@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Five Dice</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <h1>Five Dice</h1>
+      <div class="top-actions">
+        <span class="best" id="best"></span>
+        <button class="ghost" id="newGameBtn" type="button">New game</button>
+      </div>
+    </header>
+
+    <section class="setup" id="setup">
+      <h2>Who's playing?</h2>
+      <div id="playerInputs" class="player-inputs"></div>
+      <div class="setup-actions">
+        <button class="ghost" id="addPlayer" type="button">+ Add player</button>
+        <button class="primary" id="startBtn" type="button">Start</button>
+      </div>
+      <details class="rules">
+        <summary>How to play</summary>
+        <p>Each turn you get up to three rolls. Tap dice to hold them between rolls, then pick one
+          box on the scorecard to score. Every box is used exactly once; after 13 turns the highest
+          total wins.</p>
+        <ul>
+          <li><b>Upper section:</b> sum of the matching faces. Reach 63 for a +35 bonus.</li>
+          <li><b>Full House</b> 25 · <b>Small Straight</b> (4 in a row) 30 · <b>Large Straight</b> 40 · <b>Five of a Kind</b> 50.</li>
+          <li>Each extra Five of a Kind is worth +100 if you already scored 50 there, and acts as a
+            joker: fill the matching upper box if it's open, otherwise any lower box at full value.</li>
+          <li>Keys: <kbd>Space</kbd> roll, <kbd>1</kbd>–<kbd>5</kbd> hold dice.</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="game hidden" id="game">
+      <div class="turn-banner" id="turnBanner"></div>
+
+      <div class="dice-area">
+        <div class="dice" id="dice"></div>
+        <button class="primary roll" id="rollBtn" type="button">Roll</button>
+        <div class="rolls-left" id="rollsLeft"></div>
+      </div>
+
+      <div class="card-wrap">
+        <table class="card" id="card">
+          <thead><tr id="cardHead"><th>Category</th></tr></thead>
+          <tbody id="cardBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <dialog id="endDialog">
+      <h2 id="endTitle"></h2>
+      <ol id="endList"></ol>
+      <form method="dialog"><button class="primary" id="playAgain">Play again</button></form>
+    </dialog>
+  </main>
+
+  <script src="scoring.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
