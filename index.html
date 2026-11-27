@@ -25,6 +25,11 @@
         <button type="button" class="tab active" id="tabPlay" aria-pressed="true">Play</button>
         <button type="button" class="tab" id="tabProfiles" aria-pressed="false">Profiles</button>
         <button type="button" class="tab" id="tabHof" aria-pressed="false">Hall of Fame</button>
+        <button type="button" class="tab share-btn" id="shareBtn" aria-label="Share Five Dice" title="Share">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v12"/><path d="M7.5 7.5 12 3l4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>
+          </svg>
+        </button>
       </nav>
     </header>
 
@@ -182,6 +187,8 @@
         <p class="hof-foot muted" id="hofFoot"></p>
       </div>
     </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <dialog id="endDialog">
       <h2 id="endTitle"></h2>

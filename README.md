@@ -15,6 +15,12 @@ Home Screen**; Android Chrome: **⋮ → Add to Home screen**). It opens full-sc
 icon and works offline once it has loaded. Updates download in the background and apply the
 next time you open it.
 
+### Sharing
+
+Tap the share icon in the top-right corner to send the game's link with your phone's share
+menu (or copy it, on browsers without one). Each person's profiles and stats stay on their own
+device; use **Profiles → Export / Import** to share them.
+
 ### Dice tab and Scorecard tab
 
 During a game you switch between two tabs (tap them, or press `D` / `S`):

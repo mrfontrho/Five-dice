@@ -59,6 +59,13 @@ h2:first-child { margin-top: 0; }
 .tabs { display: flex; gap: 2px; }
 .tab { background: none; color: var(--muted); padding: 6px 10px; border-radius: 8px; font-weight: 500; }
 .tab.active { color: var(--text); background: var(--soft); }
+.share-btn { display: grid; place-items: center; padding: 6px 8px; margin-left: 2px; }
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 0.9rem; font-weight: 500;
+  transition: opacity 0.2s ease, transform 0.2s ease; z-index: 50;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* ---------- controls ---------- */
 button, .button-like {
@@ -133,18 +140,40 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-si
 @keyframes pulse { 50% { transform: scale(1.4); opacity: 0.6; } }
 
 /* ---------- dice tab ---------- */
-.dice-area { display: grid; justify-items: center; gap: 14px; padding: 16px; }
-.tray { width: 100%; padding: 30px 8px 22px; border-radius: 12px; background: var(--soft); }
-.dice { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+/* Dice fill the space: 3 across on top, 2 centered below. Size is the smaller of what
+   fits across the tray and what fits vertically with the controls, within 52-132px. */
+.dice-area {
+  --gap: clamp(10px, 3vw, 16px);
+  --dice-chrome: 520px;
+  /* across: viewport (capped at the app width) minus page/panel/tray padding (~62px) and two gaps */
+  --die-size: clamp(52px, min(calc((min(100vw, 560px) - 62px - 2 * var(--gap)) / 3), calc((100dvh - var(--dice-chrome)) / 2)), 132px);
+  display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 10px;
+  flex: 1;
+}
+/* The Dice tab fills the screen; spare height goes to the tray, with the dice centered in it. */
+#dicePanel:not([hidden]) { display: flex; flex-direction: column; min-height: calc(100dvh - 216px); }
+.game.manual .dice-area { --dice-chrome: 560px; }
+.tray {
+  width: 100%; flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: calc(var(--die-size) * 0.32 + 10px) 4px 20px; border-radius: 12px; background: var(--soft);
+}
+.dice {
+  display: flex; gap: var(--gap); flex-wrap: wrap; justify-content: center;
+  width: calc(var(--die-size) * 3 + var(--gap) * 2 + 1px); max-width: 100%;
+}
 .die, .face-btn {
   border-radius: 12px; background: var(--die); border: 1px solid var(--line);
   display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
 }
-.die { width: 60px; height: 60px; padding: 8px; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.die {
+  width: var(--die-size); height: var(--die-size); padding: calc(var(--die-size) * 0.15); border-radius: calc(var(--die-size) * 0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.die .pip { width: calc(var(--die-size) * 0.16); height: calc(var(--die-size) * 0.16); }
 .die:disabled { opacity: 1; cursor: default; }
 .die.holdable, .die.editable { cursor: pointer; }
-.die.held { box-shadow: 0 0 0 3px var(--held); transform: translateY(-4px); border-color: var(--held); }
+.die.held { box-shadow: 0 0 0 4px var(--held); transform: translateY(-6px); border-color: var(--held); }
 .die.blank { opacity: 0.35; }
 .die.editable.blank { border-style: dashed; opacity: 0.6; box-shadow: none; }
 .pip { width: 10px; height: 10px; border-radius: 50%; background: var(--pip); place-self: center; visibility: hidden; }
@@ -153,9 +182,9 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-si
 .die.land { animation: land 0.3s ease-out; }
 @keyframes tumble {
   0%   { transform: translateY(0) rotate(0) scale(1); }
-  20%  { transform: translateY(-34px) rotate(calc(var(--spin, 360deg) * 0.35)) scale(0.92); }
+  20%  { transform: translateY(calc(var(--die-size, 60px) * -0.4)) rotate(calc(var(--spin, 360deg) * 0.35)) scale(0.92); }
   45%  { transform: translateY(0) rotate(calc(var(--spin, 360deg) * 0.7)) scale(1.04); }
-  65%  { transform: translateY(-12px) rotate(calc(var(--spin, 360deg) * 0.9)) scale(0.97); }
+  65%  { transform: translateY(calc(var(--die-size, 60px) * -0.14)) rotate(calc(var(--spin, 360deg) * 0.9)) scale(0.97); }
   100% { transform: translateY(0) rotate(var(--spin, 360deg)) scale(1); }
 }
 @keyframes land { 0% { transform: scale(1.12); } 60% { transform: scale(0.96); } 100% { transform: scale(1); } }
@@ -332,8 +361,6 @@ dialog h2 { margin-top: 0; font-size: 1.2rem; text-transform: none; letter-spaci
   .app { padding: 10px 12px 16px; }
   .top h1 { font-size: 1rem; }
   .tab { padding: 6px 7px; font-size: 0.92rem; }
-  .die { width: 52px; height: 52px; padding: 7px; }
-  .pip { width: 9px; height: 9px; }
   .box, .sub { padding: 0 9px; font-size: 0.86rem; }
   .panel { padding: 14px; }
 }
@@ -345,6 +372,7 @@ dialog h2 { margin-top: 0; font-size: 1.2rem; text-transform: none; letter-spaci
 }
 
 @media (max-height: 620px) {
+  #dicePanel:not([hidden]) { min-height: calc(100dvh - 190px); }
   .top { height: 30px; margin-bottom: 2px; }
   .app { padding-top: 6px; }
   .turn-bar { height: 30px; margin-bottom: 6px; }

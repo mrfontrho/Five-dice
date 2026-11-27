@@ -193,6 +193,7 @@
   function enterGame() {
     buildCard();
     $("game").classList.toggle("multi", showStandings());
+    $("game").classList.toggle("manual", state.mode === "manual");
     $("virtualControls").classList.toggle("hidden", state.mode !== "virtual");
     $("manualControls").classList.toggle("hidden", state.mode !== "manual");
     showView("play");
@@ -915,7 +916,37 @@
     }
   }
 
+  // ---------- sharing ----------
+  const PUBLIC_URL = "https://mrfontrho.github.io/Five-dice/";
+  // Share the address the app is running from (so forks share themselves); fall back to the
+  // public site when opened as a local file.
+  function shareUrl() {
+    if (!location.protocol.startsWith("http")) return PUBLIC_URL;
+    return location.origin + location.pathname.replace(/index\.html$/, "");
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  async function shareApp() {
+    const url = shareUrl();
+    const payload = { title: "Five Dice", text: "Play Five Dice with me", url };
+    if (navigator.share) {
+      try { await navigator.share(payload); return; }
+      catch (e) { if (e && e.name === "AbortError") return; } // closed the share sheet
+    }
+    try { await navigator.clipboard.writeText(url); toast("Link copied"); }
+    catch { prompt("Copy this link to share Five Dice:", url); }
+  }
+
   // ---------- wiring ----------
+  $("shareBtn").addEventListener("click", shareApp);
   buildDice();
   $("tabPlay").addEventListener("click", () => showView("play"));
   $("tabProfiles").addEventListener("click", () => showView("profiles"));

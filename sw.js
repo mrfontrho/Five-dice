@@ -1,6 +1,6 @@
 // Five Dice service worker: keeps the app working offline.
 // Bump VERSION whenever app files change so phones pick up the new copy.
-const VERSION = "five-dice-v2";
+const VERSION = "five-dice-v3";
 const FILES = [
   "./",
   "index.html",
