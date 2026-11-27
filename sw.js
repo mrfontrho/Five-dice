@@ -22,12 +22,19 @@ const FILES = [
 
 // Save a complete copy of this version. "reload" skips the browser's HTTP cache,
 // so a version saved right after a release isn't mixed with older files.
+// Versions before v4 had no "Update ready" button, so their pages can't ask to switch.
+const LEGACY = ["five-dice-v1", "five-dice-v2", "five-dice-v3"];
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(VERSION).then((cache) => cache.addAll(FILES.map((f) => new Request(f, { cache: "reload" }))))
-  );
-  // On first install there's nothing to replace, so the browser activates it right away.
-  // Later versions wait until the app asks (the "Update ready" button).
+  event.waitUntil((async () => {
+    const cache = await caches.open(VERSION);
+    await cache.addAll(FILES.map((f) => new Request(f, { cache: "reload" })));
+    // On first install there's nothing to replace, so the browser activates it right away.
+    // Replacing a pre-button version: take over now (as those versions always did).
+    // Otherwise wait until the app asks, via the "Update ready" button.
+    const keys = await caches.keys();
+    if (keys.some((k) => LEGACY.includes(k))) await self.skipWaiting();
+  })());
 });
 
 // The app sends this when the player taps "Update ready".
